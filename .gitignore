@@ -16,5 +16,5 @@ dist/
 paper/*.pdf
 paper/pages/
 
-# 大きな計算結果（図は results/figures/ に置き、必要なら手動で追加）
+# 計算結果: .npz は大きいので除外。図・要約・収束テストの表はコミットする。
 results/data/

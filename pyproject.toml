@@ -13,6 +13,9 @@ dependencies = [
     "scipy>=1.18.1",
 ]
 
+[project.scripts]
+cdw = "contact_damped_wave.cli:main"
+
 [build-system]
 requires = ["uv_build>=0.12.3,<0.13.0"]
 build-backend = "uv_build"
