@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# uv / virtualenv
+.venv/
+
+# 論文 PDF・ページ画像（README の手順で再取得可能）
+paper/*.pdf
+paper/pages/
+
+# 大きな計算結果（図は results/figures/ に置き、必要なら手動で追加）
+results/data/
