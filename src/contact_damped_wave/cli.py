@@ -67,6 +67,13 @@ def _build_parser() -> argparse.ArgumentParser:
         default=1,
         help="ignore contact components smaller than this many cells when reporting",
     )
+    run.add_argument(
+        "--connectivity",
+        type=int,
+        choices=(1, 2),
+        default=2,
+        help="2 (default) counts diagonal neighbours as connected, 1 does not",
+    )
     run.add_argument("--no-data", action="store_true", help="do not write the .npz archive")
     run.add_argument("--quiet", action="store_true")
     return parser
@@ -119,7 +126,9 @@ def _run(args: argparse.Namespace) -> int:
     elapsed = time.perf_counter() - started
 
     mask = contact_mask(result, mode=args.contact_mode)
-    report = summarize(result, mask, min_size=args.min_component_size)
+    report = summarize(
+        result, mask, min_size=args.min_component_size, connectivity=args.connectivity
+    )
     print(f"solved in {elapsed:.2f} s")
     print(report)
     (out / "summary.txt").write_text(
@@ -156,8 +165,15 @@ def _run(args: argparse.Namespace) -> int:
             print(f"wrote {out / name}")
 
     if not args.no_data:
-        data_path = Path("results") / "data" / f"ex{args.example}_{args.initial}.npz"
-        result.save(data_path)
+        # Name the archive after everything that changes the run, so that two
+        # invocations with different parameters cannot silently overwrite each
+        # other, and keep it next to the figures the same invocation produced.
+        stem = (
+            f"ex{args.example}_{args.initial}_{args.initial_step}"
+            f"_dx{params.dx:g}_dt{params.dt:g}_eps{params.eps:g}"
+            f"_alpha{params.alpha:g}_h{params.h:g}_T{params.T:g}"
+        )
+        data_path = result.save(out / f"{stem}.npz")
         if not args.quiet:
             print(f"wrote {data_path}")
     return 0

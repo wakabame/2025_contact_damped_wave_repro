@@ -40,15 +40,27 @@ the *exact* identity
              + (dt / 2) dx sum_j (delta_x v^{i+1/2}_j)^2               >= 0,
     Q_con  = -dx sum_j P^i_j v^{i+1/2}_j .
 
-``Q_visc`` is the discrete counterpart of ``alpha int |partial_tx eta|^2`` in the
-energy balance (1.4), ``Q_con`` of ``int D_con``, and ``Q_num`` is the purely
-numerical dissipation of the scheme (it is ``O(dt)`` and vanishes in the limit).
+``Q_visc`` and ``Q_num`` are sums of squares, hence non-negative.  ``Q_visc`` is
+the discrete counterpart of ``alpha int |partial_tx eta|^2`` in the energy
+balance (1.4) and ``Q_num`` is the purely numerical dissipation of the scheme
+(``O(dt)``, it vanishes in the limit).
+
+``Q_con`` is the *work* extracted by the penalty force, the discrete counterpart
+of ``int D_con``.  It is **not** non-negative step by step: ``P^i`` is built from
+the old velocity ``v^{i-1/2}`` but multiplied by the new one ``v^{i+1/2}``, so at
+the few steps where a node reverses direction ``Q_con`` can dip slightly below
+zero.  The dip is an ``O(dt)`` artefact of the explicit penalization -- relative
+to the energy it removes it is below ``4e-9`` at ``dx = dt = 1/500`` and below
+``4e-14`` at the paper's resolution -- so the field is called ``contact_work``
+rather than a dissipation.  Its time integral is positive.
+
 :func:`solve` records the three rates at every step so that the balance closes to
 machine precision.
 """
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -88,9 +100,11 @@ class Result:
         Every time level ``t^0, ..., t^M``, shape ``(M + 1,)``.
     energy:
         Discrete energy ``0.5 dx sum (v^i)^2 + 0.5 dx sum ((delta_x eta^i))^2``.
-    viscous_dissipation, contact_dissipation, numerical_dissipation:
+    viscous_dissipation, contact_work, numerical_dissipation:
         The rates ``Q_visc``, ``Q_con`` and ``Q_num`` of the discrete energy
-        identity above.  Entry ``i`` belongs to the step ``i - 1 -> i``, so that
+        identity above.  Only the first and last are non-negative; see the module
+        docstring for why ``contact_work`` can dip slightly negative.  Entry ``i``
+        belongs to the step ``i - 1 -> i``, so that
         ``E^i = E^{i_0} - dt * sum_{k>i_0} (Q_visc + Q_num + Q_con)[k]`` where
         ``i_0 = balance_start_index``.
     min_eta:
@@ -107,7 +121,7 @@ class Result:
     t_full: np.ndarray
     energy: np.ndarray
     viscous_dissipation: np.ndarray
-    contact_dissipation: np.ndarray
+    contact_work: np.ndarray
     numerical_dissipation: np.ndarray
     min_eta: np.ndarray
     contact_fraction: np.ndarray
@@ -125,8 +139,14 @@ class Result:
         return float(self.t[idx]), self.eta[idx]
 
     def save(self, path: str | Path) -> Path:
-        """Save the result to a ``.npz`` archive."""
+        """Save the result to a ``.npz`` archive and return the path actually written.
+
+        ``numpy.savez_compressed`` appends ``.npz`` when the name lacks it, so the
+        returned path -- not the argument -- is what :meth:`load` must be given.
+        """
         path = Path(path)
+        if path.suffix != ".npz":
+            path = path.with_suffix(path.suffix + ".npz")
         path.parent.mkdir(parents=True, exist_ok=True)
         np.savez_compressed(
             path,
@@ -137,7 +157,7 @@ class Result:
             t_full=self.t_full,
             energy=self.energy,
             viscous_dissipation=self.viscous_dissipation,
-            contact_dissipation=self.contact_dissipation,
+            contact_work=self.contact_work,
             numerical_dissipation=self.numerical_dissipation,
             min_eta=self.min_eta,
             contact_fraction=self.contact_fraction,
@@ -172,7 +192,7 @@ class Result:
                 t_full=data["t_full"],
                 energy=data["energy"],
                 viscous_dissipation=data["viscous_dissipation"],
-                contact_dissipation=data["contact_dissipation"],
+                contact_work=data["contact_work"],
                 numerical_dissipation=data["numerical_dissipation"],
                 min_eta=data["min_eta"],
                 contact_fraction=data["contact_fraction"],
@@ -265,6 +285,18 @@ def solve(
 
     eta0 = eta0.copy()
     v0 = v0.copy()
+    mismatch = max(abs(eta0[0] - h), abs(eta0[-1] - h))
+    if mismatch > 1e-12 * max(1.0, abs(h)):
+        # Clamping (1.3) onto data that does not meet it puts a jump across the
+        # first/last cell whose elastic energy ~ mismatch^2 / dx grows without
+        # bound as the grid is refined.  Only "paper-literal" data does this.
+        warnings.warn(
+            f"eta0 disagrees with the boundary condition eta = h = {h:g} by {mismatch:g} "
+            f"at an endpoint; clamping it adds about {mismatch**2 / dx:.3g} of spurious "
+            "elastic energy, which diverges as dx -> 0",
+            RuntimeWarning,
+            stacklevel=2,
+        )
     eta0[0] = eta0[-1] = h
     v0[0] = v0[-1] = 0.0
 
@@ -361,7 +393,7 @@ def solve(
         t_full=np.arange(n_steps + 1) * dt,
         energy=energy,
         viscous_dissipation=viscous,
-        contact_dissipation=contact,
+        contact_work=contact,
         numerical_dissipation=numerical,
         min_eta=min_eta,
         contact_fraction=contact_fraction,

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -54,8 +55,11 @@ def _row(example: int, step: float, eps: float, min_size: int) -> tuple[str, dic
     store_every = max(1, params.M // TARGET_SNAPSHOTS)
     result = solve(params, eta0, v0, store_every=store_every)
     balance = energy_balance(result)
-    # Scale the speckle filter with the grid so that it covers the same area.
-    scaled_min_size = max(1, round(min_size * (base.dx / step) * (base.dt / (step * store_every))))
+    # Scale the speckle filter with the grid so that it always covers at least the
+    # same area; ceil, not round, since the flag means "discard below this area".
+    scaled_min_size = max(
+        1, math.ceil(min_size * (base.dx / step) * (base.dt / (step * store_every)))
+    )
     comps = components(result, min_size=scaled_min_size)
     start = first_contact_time(result)
     record = {

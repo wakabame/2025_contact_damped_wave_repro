@@ -20,9 +20,10 @@ $$
 
 - [x] Phase 0: 環境構築（uv, 依存関係, plan.md, README）
 - [x] Phase 1: ソルバー実装（`params` / `initial_data` / `solver` / `diagnostics` / `plotting` / `cli`）
-- [x] Phase 2: 検証テスト（38 件。解析解との 1 次収束、エネルギー恒等式、対称性、収束テスト）
+- [x] Phase 2: 検証テスト（45 件。解析解との 1 次収束、エネルギー恒等式、対称性、収束テスト）
 - [x] Phase 3: Example 1 再現（Fig. 2, 3）
 - [x] Phase 4: Example 2 再現（Fig. 4, 5）
+- [x] 外部レビュー（codex）の指摘 7 件を修正（[docs/notes.md](docs/notes.md) §5）
 - [ ] Phase 5–6: 追加解析（接触散逸の局在）・図の並列比較
 
 ### 再現結果の要約
@@ -71,7 +72,7 @@ uv run cdw run --example 1                       # Fig. 2, 3 相当を results/e
 uv run cdw run --example 2                       # Fig. 4, 5 相当を results/ex2 に生成
 uv run cdw run --example 2 --initial paper-literal --out results/ex2_paper_literal
 uv run python scripts/convergence_study.py       # Δt, Δx, ε の収束テスト
-uv run pytest                                     # 検証テスト（38 件、1 秒未満）
+uv run pytest                                     # 検証テスト（45 件、1 秒未満）
 uv run ruff check . && uv run ruff format .
 ```
 
@@ -83,10 +84,11 @@ uv run ruff check . && uv run ruff format .
 | `--initial {figure,paper-literal}` | `figure` | Ex.2 の初期データ（plan.md 項目 (b)）|
 | `--initial-step {backward,forward}` | `backward` | 三段階漸化式の開始法（項目 (d)）|
 | `--contact-mode {negative,threshold}` | `negative` | 接触集合の判定（項目 (e)）|
+| `--connectivity {1,2}` | 2 | 連結成分の近傍（2 = 8 近傍）|
 | `--store-every` | 1 | スナップショットの間引き |
 
 生成物: `fig{2,4}_snapshots.png`, `fig{3,5}_contact_set.png`, `fig{3,5}_velocity.png`,
-`energy.png`, `summary.txt`（`results/exN/`）と `results/data/exN_*.npz`。
+`energy.png`, `summary.txt`、およびパラメータを名前に含む `.npz`（すべて `--out` 配下）。
 
 ## 論文の設定（共通）
 

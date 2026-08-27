@@ -131,7 +131,7 @@ def plot_energy(result: Result, *, title: str | None = None) -> Figure:
     fig, ax = plt.subplots(figsize=(6.0, 4.0))
     ax.plot(balance.t, balance.energy, label="energy $E(t)$")
     ax.plot(balance.t, balance.viscous_cumulative, label="viscous dissipation (cum.)")
-    ax.plot(balance.t, balance.contact_cumulative, label="contact dissipation (cum.)")
+    ax.plot(balance.t, balance.contact_cumulative, label="contact work (cum.)")
     ax.plot(balance.t, balance.numerical_cumulative, label="numerical dissipation (cum.)")
     ax.plot(balance.t, balance.total, "k--", lw=1.0, label="sum (should be constant)")
     ax.set_xlabel("t")

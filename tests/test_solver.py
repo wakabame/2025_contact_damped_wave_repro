@@ -44,7 +44,7 @@ def test_no_contact_in_the_smooth_reference_solution() -> None:
     result = solve(params, _exact(0.0, x), _exact_v0(x))
     assert result.min_eta.min() > 0.5
     assert np.all(result.contact_fraction == 0.0)
-    assert np.all(result.contact_dissipation == 0.0)
+    assert np.all(result.contact_work == 0.0)
 
 
 def test_first_order_convergence_to_the_exact_solution() -> None:
@@ -103,11 +103,32 @@ def test_result_roundtrip(tmp_path) -> None:
     result = solve(params, _exact(0.0, x), _exact_v0(x))
     from contact_damped_wave.solver import Result
 
-    loaded = Result.load(result.save(tmp_path / "r.npz"))
+    # Bit-exact: an archive that only round-trips approximately is not a checkpoint.
+    written = result.save(tmp_path / "r.npz")
+    loaded = Result.load(written)
     assert loaded.params == params
-    assert loaded.eta == pytest.approx(result.eta)
-    assert loaded.numerical_dissipation == pytest.approx(result.numerical_dissipation)
+    for field in (
+        "x",
+        "t",
+        "eta",
+        "v",
+        "t_full",
+        "energy",
+        "viscous_dissipation",
+        "contact_work",
+        "numerical_dissipation",
+        "min_eta",
+        "contact_fraction",
+    ):
+        assert np.array_equal(getattr(loaded, field), getattr(result, field)), field
+    assert loaded.store_every == result.store_every
+    assert loaded.initial_step == result.initial_step
     assert loaded.balance_start_index == result.balance_start_index
+
+    # A name without the extension must still be loadable from the returned path.
+    written_bare = result.save(tmp_path / "bare")
+    assert written_bare.suffix == ".npz"
+    assert np.array_equal(Result.load(written_bare).eta, result.eta)
 
 
 @pytest.mark.parametrize("bad", [{"store_every": 0}, {"initial_step": "middle"}])

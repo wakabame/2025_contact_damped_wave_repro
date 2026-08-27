@@ -38,14 +38,15 @@ def test_dissipation_rates_are_non_negative(coarse_example1) -> None:
     ``Q_visc`` and ``Q_num`` are sums of squares, hence exactly non-negative.
     ``Q_con = -dx sum P^i v^{i+1/2}`` can dip very slightly negative because the
     penalty is explicit (``P^i`` is built from ``v^{i-1/2}``), which matters only
-    at the few steps where a node reverses direction.  The dip is an ``O(dt)``
-    artefact: relative to the dissipated energy it is below 1e-8 already at this
-    coarse resolution and shrinks with ``dt``.
+    at the few steps where a node reverses direction -- which is why it is named
+    ``contact_work`` rather than a dissipation.  The dip is an ``O(dt)`` artefact:
+    relative to the energy it removes it is below 1e-8 already at this coarse
+    resolution and shrinks with ``dt``.
     """
     result = _run(1, coarse_example1)
     assert result.viscous_dissipation.min() >= 0.0
     assert result.numerical_dissipation.min() >= 0.0
-    increments = result.contact_dissipation * coarse_example1.dt
+    increments = result.contact_work * coarse_example1.dt
     positive = increments[increments > 0.0].sum()
     negative = -increments[increments < 0.0].sum()
     assert positive > 0.0
@@ -58,10 +59,10 @@ def test_energy_is_non_increasing(coarse_example1) -> None:
     assert result.energy[-1] < 0.05 * result.energy[0]
 
 
-def test_contact_dissipation_only_while_in_contact(coarse_example1) -> None:
+def test_contact_work_only_while_in_contact(coarse_example1) -> None:
     """(A2): ``supp(D_con) subset supp(F_con) subset {eta <= 0}``."""
     result = _run(1, coarse_example1)
-    active = result.contact_dissipation > 1e-12 * result.energy[0]
+    active = result.contact_work > 1e-12 * result.energy[0]
     # rate index i belongs to the step (i-1) -> i, whose penalty is built from level i-1
     assert np.all(result.contact_fraction[:-1][active[1:]] > 0.0)
 
@@ -141,3 +142,82 @@ def test_no_contact_means_no_first_contact_time() -> None:
     assert first_contact_time(result) is None
     assert contact_area(result) == 0.0
     assert components(result) == []
+
+
+def test_time_weights_sum_to_the_time_span(coarse_example1) -> None:
+    """Regression: weights come from ``result.t``, not from ``dt * store_every``."""
+    from contact_damped_wave.diagnostics import time_weights
+
+    for store_every in (1, 7, 13, 10_000):
+        result = _run(1, coarse_example1, store_every=store_every)
+        weights = time_weights(result)
+        assert weights.shape == result.t.shape
+        assert np.all(weights >= 0.0)
+        assert weights.sum() == pytest.approx(coarse_example1.T)
+
+
+def test_contact_area_is_stable_under_snapshot_stride(coarse_example1) -> None:
+    """Regression: a stride that does not divide M used to inflate the area."""
+    reference = contact_area(_run(1, coarse_example1))
+    for store_every in (2, 7, 13):
+        strided = contact_area(_run(1, coarse_example1, store_every=store_every))
+        assert strided == pytest.approx(reference, rel=0.05), store_every
+    # A stride larger than the whole run keeps only t = 0 and t = T; the area must
+    # stay bounded by the domain measure instead of being counted stride times.
+    coarse = contact_area(_run(1, coarse_example1, store_every=10_000))
+    assert 0.0 <= coarse <= coarse_example1.length * coarse_example1.T
+
+
+def test_drift_of_a_rest_state_is_reported_honestly() -> None:
+    """Regression: dividing by an exactly zero initial budget gave ~1e279.
+
+    For a rest state both the energy and the drift are pure round-off, so the
+    meaningful statement is that the *absolute* drift is negligible and that the
+    relative figure is at least finite rather than astronomically large.
+    """
+    params = Params(length=1.0, T=0.1, dx=1 / 200, dt=1 / 200, alpha=0.01, eps=5e-3, h=1.0)
+    x = np.linspace(0.0, 1.0, params.N + 1)
+    balance = energy_balance(solve(params, np.full_like(x, 1.0), np.zeros_like(x)))
+    assert balance.absolute_drift < 1e-20
+    assert np.isfinite(balance.relative_drift)
+    assert balance.relative_drift < 1e3
+
+
+def test_relative_drift_is_meaningful_when_there_is_energy(coarse_example1) -> None:
+    result = _run(1, coarse_example1)
+    balance = energy_balance(result)
+    assert balance.relative_drift < 1e-9
+    assert balance.absolute_drift < 1e-6 * balance.energy[0]
+
+
+def test_diagonal_front_is_one_component(coarse_example1) -> None:
+    """``connectivity=1`` cuts a front that advances one node per step into pieces."""
+    result = _run(1, coarse_example1)
+    assert len(components(result, min_size=5, connectivity=2)) == 1
+    assert len(components(result, min_size=5, connectivity=1)) >= 1
+
+
+def test_initial_data_meets_the_boundary_condition_for_any_h(coarse_example1) -> None:
+    """Regression: built-in data used to hard-code endpoint height 1.
+
+    Clamping data that disagrees with ``h`` injects ``~ (eta0(0) - h)^2 / dx`` of
+    elastic energy, which diverges under refinement; ``solve`` now warns about it.
+    """
+    import warnings
+
+    for h in (0.5, 1.0, 2.0):
+        params = coarse_example1.replace(h=h)
+        _, x, eta0, v0 = initial_data(1, params)
+        assert eta0[0] == pytest.approx(h)
+        assert eta0[-1] == pytest.approx(h)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            result = solve(params, eta0, v0)
+        assert result.energy[0] == pytest.approx(_run(1, coarse_example1).energy[0], rel=1e-9)
+
+
+def test_clamping_inconsistent_initial_data_warns(coarse_example2) -> None:
+    """The ``paper-literal`` data has ``eta^0(0) = 0 != h``; that must not pass silently."""
+    _, _, eta0, v0 = initial_data(2, coarse_example2, "paper-literal")
+    with pytest.warns(RuntimeWarning, match="boundary condition"):
+        solve(coarse_example2, eta0, v0)

@@ -5,11 +5,11 @@ energy          : E(0)=771.249 -> E(T)=8.44577
   dissipated    : viscous=198.099, contact=457.013, numerical=107.692
   balance drift : 4.819e-10 (relative)
 energy monotone : True
-  min rates     : viscous=0, contact=-4.978e-10, numerical=0 (all should be >= 0)
+  min rates     : viscous=0 (>= 0), numerical=0 (>= 0), contact work=-4.978e-10 (may dip < 0 by O(dt), see solver docstring)
 first contact   : 0.0256
 penetration     : 2.4938e-02 (49.88 x eps)
 contact area    : 0.0821036
 components      : 2 (min_size=20)
   #1 t in [0.0256, 0.2610], x in [0.0316, 0.5938], area=0.06637
   #2 t in [0.2434, 0.3810], x in [0.6932, 0.8600], area=0.01573
-wall time: 0.47 s
+wall time: 0.48 s

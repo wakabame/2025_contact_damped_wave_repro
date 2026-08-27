@@ -23,6 +23,7 @@ __all__ = [
     "EnergyBalance",
     "components",
     "contact_area",
+    "time_weights",
     "contact_intervals",
     "contact_mask",
     "energy_balance",
@@ -49,6 +50,26 @@ def contact_mask(result: Result, mode: ContactMode = "negative", tol: float = 1e
     raise ValueError(f"mode must be 'negative' or 'threshold', got {mode!r}")
 
 
+def time_weights(result: Result) -> np.ndarray:
+    """Quadrature weights in ``t`` for the stored snapshots, shape ``(n_stored,)``.
+
+    Trapezoidal weights built from ``result.t`` itself rather than from
+    ``dt * store_every``: the stored levels need not be equally spaced, because
+    :func:`~contact_damped_wave.solver.solve` always appends the final level even
+    when ``store_every`` does not divide the number of steps.  The weights sum to
+    ``t[-1] - t[0]`` by construction, so measures computed with them cannot count
+    a short final interval as a full stride.
+    """
+    t = result.t
+    if t.size < 2:
+        return np.zeros_like(t)
+    weights = np.empty_like(t)
+    weights[1:-1] = 0.5 * (t[2:] - t[:-2])
+    weights[0] = 0.5 * (t[1] - t[0])
+    weights[-1] = 0.5 * (t[-1] - t[-2])
+    return weights
+
+
 @dataclass(frozen=True)
 class Component:
     """A connected component of the contact set in the ``(t, x)`` plane."""
@@ -68,16 +89,32 @@ class Component:
 
 
 def components(
-    result: Result, mask: np.ndarray | None = None, min_size: int = 1
+    result: Result,
+    mask: np.ndarray | None = None,
+    min_size: int = 1,
+    connectivity: int = 2,
 ) -> list[Component]:
     """Connected components of the contact set, largest first.
 
-    Components smaller than ``min_size`` grid cells are discarded; this filters
-    out single-node speckle produced by the penalization near the contact front.
+    Parameters
+    ----------
+    min_size:
+        Components made of fewer than this many grid cells are discarded, which
+        filters out the single-node speckle the penalization leaves near the
+        contact front.  It counts *cells*, so it must be rescaled by hand when
+        the grid or ``store_every`` changes.
+    connectivity:
+        ``2`` (default) treats diagonal neighbours as connected, ``1`` only
+        axis-aligned ones.  A detachment front that moves one node per time step
+        is diagonal in the ``(t, x)`` plane and would be cut into many pieces by
+        ``connectivity=1``.  Component counts are also only as reliable as the
+        snapshot stride: with ``store_every > 1`` a contact that vanishes and
+        reappears between two stored levels is counted once.
     """
     mask = contact_mask(result) if mask is None else mask
-    labels, count = ndimage.label(mask)
-    cell_area = result.params.dx * result.params.dt * result.store_every
+    structure = ndimage.generate_binary_structure(2, connectivity)
+    labels, count = ndimage.label(mask, structure=structure)
+    weights = time_weights(result)
     out: list[Component] = []
     for label in range(1, count + 1):
         rows, cols = np.nonzero(labels == label)
@@ -91,7 +128,7 @@ def components(
                 t_max=float(result.t[rows.max()]),
                 x_min=float(result.x[cols.min()]),
                 x_max=float(result.x[cols.max()]),
-                area=size * cell_area,
+                area=float(weights[rows].sum()) * result.params.dx,
             )
         )
     out.sort(key=lambda component: component.size, reverse=True)
@@ -113,9 +150,13 @@ def contact_intervals(
 
 
 def contact_area(result: Result, mask: np.ndarray | None = None) -> float:
-    """Measure of the contact set in the ``(t, x)`` plane."""
+    """Measure of the contact set in the ``(t, x)`` plane.
+
+    Uses :func:`time_weights`, so the value stays consistent when ``store_every``
+    does not divide the number of time steps.
+    """
     mask = contact_mask(result) if mask is None else mask
-    return float(np.count_nonzero(mask)) * result.params.dx * result.params.dt * result.store_every
+    return float(time_weights(result) @ mask.sum(axis=1)) * result.params.dx
 
 
 def first_contact_time(result: Result) -> float | None:
@@ -140,7 +181,9 @@ class EnergyBalance:
     ``int_0^t alpha int |partial_tx eta|^2`` and ``int_0^t int D_con``;
     ``numerical_cumulative`` is the ``O(dt)`` dissipation of the scheme itself.
     With all three included the budget closes to machine precision, see the
-    module docstring of :mod:`contact_damped_wave.solver`.
+    module docstring of :mod:`contact_damped_wave.solver`.  The contact term is
+    the work of the penalty force: its integral is positive, but individual steps
+    can be slightly negative (again see that docstring).
     """
 
     t: np.ndarray
@@ -166,11 +209,25 @@ class EnergyBalance:
         return self.viscous_cumulative + self.contact_cumulative
 
     @property
-    def relative_drift(self) -> float:
-        """Largest relative deviation of :attr:`total` from its value at ``start_index``."""
+    def absolute_drift(self) -> float:
+        """Largest deviation of :attr:`total` from its value at ``start_index``."""
         total = self.total[self.start_index :]
-        reference = total[0]
-        return float(np.abs(total - reference).max() / max(abs(reference), 1e-300))
+        return float(np.abs(total - total[0]).max())
+
+    @property
+    def relative_drift(self) -> float:
+        """:attr:`absolute_drift` divided by the energy scale of the run.
+
+        The scale is the larger of the initial budget and the peak energy, not the
+        initial budget alone: a run started from rest has a budget of exactly zero,
+        and dividing by that turned pure round-off into a meaningless ``1e279``.
+        The result is now always finite, but it is only *meaningful* for a run that
+        carries energy: for a rest state both numerator and denominator are
+        round-off, so judge such runs by :attr:`absolute_drift` instead.
+        """
+        scale = max(abs(self.total[self.start_index]), float(np.abs(self.energy).max()))
+        drift = self.absolute_drift
+        return drift if scale <= 0.0 else drift / scale
 
 
 def energy_balance(result: Result) -> EnergyBalance:
@@ -191,16 +248,21 @@ def energy_balance(result: Result) -> EnergyBalance:
         t=result.t_full,
         energy=result.energy,
         viscous_cumulative=cumulative(result.viscous_dissipation),
-        contact_cumulative=cumulative(result.contact_dissipation),
+        contact_cumulative=cumulative(result.contact_work),
         numerical_cumulative=cumulative(result.numerical_dissipation),
         start_index=start,
     )
 
 
-def summarize(result: Result, mask: np.ndarray | None = None, min_size: int = 1) -> str:
+def summarize(
+    result: Result,
+    mask: np.ndarray | None = None,
+    min_size: int = 1,
+    connectivity: int = 2,
+) -> str:
     """Human-readable summary used by the CLI."""
     mask = contact_mask(result) if mask is None else mask
-    comps = components(result, mask, min_size=min_size)
+    comps = components(result, mask, min_size=min_size, connectivity=connectivity)
     balance = energy_balance(result)
     start = first_contact_time(result)
     lines = [
@@ -212,9 +274,10 @@ def summarize(result: Result, mask: np.ndarray | None = None, min_size: int = 1)
         f"numerical={balance.numerical_cumulative[-1]:.6g}",
         f"  balance drift : {balance.relative_drift:.3e} (relative)",
         f"energy monotone : {bool(np.all(np.diff(result.energy) <= 1e-9 * abs(result.energy[0])))}",
-        f"  min rates     : viscous={result.viscous_dissipation.min():.4g}, "
-        f"contact={result.contact_dissipation.min():.4g}, "
-        f"numerical={result.numerical_dissipation.min():.4g} (all should be >= 0)",
+        f"  min rates     : viscous={result.viscous_dissipation.min():.4g} (>= 0), "
+        f"numerical={result.numerical_dissipation.min():.4g} (>= 0), "
+        f"contact work={result.contact_work.min():.4g} "
+        f"(may dip < 0 by O(dt), see solver docstring)",
         f"first contact   : {'none' if start is None else f'{start:.4f}'}",
         f"penetration     : {penetration_depth(result):.4e} "
         f"({penetration_depth(result) / result.params.eps:.2f} x eps)",
