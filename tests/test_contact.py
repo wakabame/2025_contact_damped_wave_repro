@@ -221,3 +221,32 @@ def test_clamping_inconsistent_initial_data_warns(coarse_example2) -> None:
     _, _, eta0, v0 = initial_data(2, coarse_example2, "paper-literal")
     with pytest.warns(RuntimeWarning, match="boundary condition"):
         solve(coarse_example2, eta0, v0)
+
+
+def test_example3_contact_front_travels_to_the_right(coarse_example3) -> None:
+    """Example 3 (ours): one contact interval that translates, and never bounces.
+
+    This is what distinguishes it from the paper's two examples, whose contact
+    sets are triangles shrinking towards a single point.
+    """
+    result = _run(3, coarse_example3)
+    mask = contact_mask(result)
+    touching = np.flatnonzero(mask.any(axis=1))
+    assert touching.size > 0
+    # The contact set is a single connected band in the (t, x) plane ...
+    assert len(components(result, mask, min_size=20)) == 1
+    # ... which at (almost) every time is a single interval in x ...
+    single_interval = sum(len(contact_intervals(result, int(i), mask)) == 1 for i in touching)
+    assert single_interval > 0.95 * touching.size
+    # ... whose two edges both move to the right, monotonically in the mean.
+    left = np.array([result.x[np.flatnonzero(mask[i])[0]] for i in touching])
+    right = np.array([result.x[np.flatnonzero(mask[i])[-1]] for i in touching])
+    assert left[-1] > left[0] + 0.5
+    assert right[-1] > right[0] + 0.3
+    # A quarter of the string is still free at the right end when contact ends.
+    assert right.max() < 0.95
+
+    # Inelastic contact: the penetration stays at the O(eps) level predicted by
+    # the penetration ODE v' = -v / eps, i.e. about |v^0|_max * eps.
+    _, _, _, v0 = initial_data(3, coarse_example3)
+    assert penetration_depth(result) < 2.0 * np.abs(v0).max() * coarse_example3.eps

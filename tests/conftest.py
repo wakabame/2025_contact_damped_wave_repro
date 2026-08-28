@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from contact_damped_wave.params import EXAMPLE1, EXAMPLE2, Params
+from contact_damped_wave.params import EXAMPLE1, EXAMPLE2, EXAMPLE3, Params
 
 
 @pytest.fixture
@@ -19,3 +19,8 @@ def coarse_example1() -> Params:
 @pytest.fixture
 def coarse_example2() -> Params:
     return EXAMPLE2.replace(dx=1 / 1000, dt=1 / 1000, eps=2e-3)
+
+
+@pytest.fixture
+def coarse_example3() -> Params:
+    return EXAMPLE3.replace(dx=1 / 1000, dt=1 / 1000, eps=2e-3)

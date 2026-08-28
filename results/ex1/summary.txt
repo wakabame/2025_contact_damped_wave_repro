@@ -11,4 +11,4 @@ penetration     : 2.5573e-02 (51.15 x eps)
 contact area    : 0.154244
 components      : 1 (min_size=5)
   #1 t in [0.0236, 0.2990], x in [0.0322, 0.9678], area=0.15424
-wall time: 0.30 s
+wall time: 0.28 s

@@ -1,7 +1,8 @@
 """Reproduction of the numerical examples in arXiv:2412.06185.
 
 B. Muha, S. Trifunović, "Analysis of an Inelastic Contact Problem for the
-Damped Wave Equation" — Section 6, Examples 1 and 2.
+Damped Wave Equation" — Section 6, Examples 1 and 2, plus Example 3, our own
+showcase built on the validated solver.
 
 See ``plan.md`` at the repository root for the reproduction plan.
 """

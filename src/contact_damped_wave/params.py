@@ -14,7 +14,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, replace
 
-__all__ = ["EXAMPLE1", "EXAMPLE2", "Params"]
+__all__ = ["EXAMPLE1", "EXAMPLE2", "EXAMPLE3", "Params"]
 
 _GRID_TOL = 1e-9
 
@@ -115,3 +115,10 @@ EXAMPLE1 = Params(T=0.3)
 
 #: Section 6.2, Example 2.
 EXAMPLE2 = Params(T=0.5)
+
+#: Example 3 -- *not* from the paper.  Same discretization as the two paper
+#: examples (only ``T`` differs), used with the rolling-contact initial data of
+#: :func:`~contact_damped_wave.initial_data.example3_eta0`.  ``T = 0.7`` is long
+#: enough to contain the whole life cycle of the contact: it forms at
+#: ``t = 0.031``, travels to the right and disappears at ``t = 0.575``.
+EXAMPLE3 = Params(T=0.7)

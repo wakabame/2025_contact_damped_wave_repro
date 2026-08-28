@@ -12,4 +12,4 @@ contact area    : 0.101574
 components      : 2 (min_size=20)
   #1 t in [0.0000, 0.2458], x in [0.0020, 0.7998], area=0.10108
   #2 t in [0.1742, 0.2104], x in [0.8228, 0.8682], area=0.00049
-wall time: 0.48 s
+wall time: 0.50 s
