@@ -3,6 +3,8 @@ name = "contact-damped-wave"
 version = "0.1.0"
 description = "Reproduction of the numerical examples in arXiv:2412.06185 (inelastic contact problem for the damped wave equation)"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "wakabame", email = "yuki@deltaex.co.jp" }
 ]

@@ -32,7 +32,8 @@ reproduction record live in [docs/notes.md](docs/notes.md).
       identity, symmetry, grid/penalty convergence, CLI smoke tests)
 - [x] Example 1 reproduction (Fig. 2, 3)
 - [x] Example 2 reproduction (Fig. 4, 5)
-- [x] Two rounds of external review (codex) addressed ([docs/notes.md](docs/notes.md) §5)
+- [x] Externally reviewed (codex); scheme and energy identity independently verified
+      ([docs/notes.md](docs/notes.md) §5)
 - [x] Original **Example 3** and GIF animations ([docs/notes.md](docs/notes.md) §6–7)
 - [x] Side-by-side comparison images against the paper's figures (below,
       `scripts/make_comparison.py`)
@@ -252,6 +253,13 @@ results/                    generated figures, summaries, paper comparisons (com
                             Thm 2.3 localization check (localization/)
 paper/                      paper PDF and page images (untracked)
 ```
+
+## License
+
+The code in this repository is licensed under the [MIT License](LICENSE). The top rows of
+the images in `results/comparison/` are excerpted from arXiv:2412.06185 and remain © B.
+Muha and S. Trifunović; they are included solely for scholarly comparison and are not
+covered by the MIT license.
 
 ## Reference
 

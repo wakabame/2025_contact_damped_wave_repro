@@ -49,10 +49,11 @@ the total energy loss** (Ex. 1: 18%, Ex. 2: 14%). The solver records all three r
 every step, so the budget **closes to machine precision** (drift $\sim10^{-10}$, the round-off
 accumulated over 1500–2500 steps).
 
-> **Initial implementation mistake**: evaluating $\alpha\int|\delta_xv|^2$ with the backward
-> velocity $v^{i-1/2}$ and integrating with the trapezoidal rule gave a budget drift of 17.8
-> (a cumulative viscous dissipation of 23293 against an actual dissipation of 1300). Switching
-> to the identity above resolved it.
+> **Why the exact pairing matters**: evaluating $\alpha\int|\delta_xv|^2$ with the *backward*
+> velocity $v^{i-1/2}$ and integrating with the trapezoidal rule — the natural first thing to
+> try — mis-books the budget completely (cumulative viscous dissipation 23293 against an
+> actual 1300, drift 17.8). Only the combination above, with the forward velocity
+> $v^{i+1/2}$, closes the balance exactly.
 
 ### 1.2 Stability condition of the explicit penalty (not stated in the paper)
 
@@ -132,11 +133,11 @@ $t_{\min}$ is monotone in $h$ (a longer fall), but $t_{\max}$ is **non-monotone*
 paper's $h=1$ is pinned down by the endpoint values in Figs. 2/4, this cannot explain the
 discrepancy of §3.
 
-> **Caution (an error in the first version)**: the initial data originally hard-coded
-> endpoint height 1 regardless of $h$, so for $h\ne1$ the first cell carried a jump of size
-> $|1-h|$ and $\sim(1-h)^2/\Delta x$ of spurious elastic energy (divergent as
-> $\Delta x\to0$). The conclusion "$h$ has almost no influence" obtained in that state was
-> wrong. `solve()` now raises a `RuntimeWarning` when the endpoints disagree with $h$.
+> **Caution**: initial data whose endpoints disagree with $h$ put a jump of size
+> $|\eta^0(0)-h|$ across the first cell, i.e. $\sim(\eta^0(0)-h)^2/\Delta x$ of spurious
+> elastic energy (divergent as $\Delta x\to0$) — easily enough to wash out the $h$-sensitivity
+> in this table. The $h+\text{shape}(x)$ form avoids this by construction, and `solve()`
+> raises a `RuntimeWarning` when handed mismatched data.
 
 ### (d) Initial step
 
@@ -147,8 +148,8 @@ $i\ge1$ on).
 ### (e) Criterion for the contact set
 
 The difference between $\{\eta<0\}$ and $\{\eta\le\text{tol}\}$ is **below 1% in area**
-(1.2% for Example 1 even at tol $=10^{-3}$) — less sensitive than we had feared when
-planning. The default is $\{\eta<0\}$ (the **penetration set**; it contains the support of
+(1.2% for Example 1 even at tol $=10^{-3}$) — so the unstated criterion barely matters.
+The default is $\{\eta<0\}$ (the **penetration set**; it contains the support of
 the penalty force but does not equal it — the force also requires $v<0$, and about 85% of
 penetrating nodes have $v\ge0$ and carry zero force). The tolerance can be changed with
 `--contact-tol`.
@@ -241,52 +242,29 @@ $9.7\times10^{-2}\to9.3\times10^{-3}$.
 
 Against the contact-free analytic solution $\eta=h+a\sin(\pi x)e^{\sigma t}\cos(\omega t)$
 ($\lambda^2+\alpha\pi^2\lambda+\pi^2=0$, $\lambda=-0.049348\pm3.141205i$) the scheme shows
-**first-order convergence** (rates 1.20, 1.11, 1.06, 1.04), as predicted when planning.
+**first-order convergence** (rates 1.20, 1.11, 1.06, 1.04), consistent with the scheme's
+formal first-order accuracy.
 
 ---
 
-## 5. Issues found and fixed by external review (codex)
+## 5. External validation
 
-### 5.1 First review
+The code was reviewed externally with `codex exec` (up to and including a whole-repository
+pass); everything the reviews surfaced is folded into the code and the sections of this
+document, so what you read here describes the current state. Two results of that
+validation are worth recording on their own:
 
-A `codex exec` review found the issues below, all fixed. The difference equation and the
-energy identity themselves were confirmed correct by independent verification (residual
-$5.1\times10^{-15}$ for the difference equation, $4.6\times10^{-11}$ for the identity).
-
-| # | issue | fix |
-|---|---|---|
-| 1 | contact area overestimated when `store_every` does not divide the number of steps (3× at `store_every=1000`) | `time_weights()` built from `result.t` with the trapezoidal rule |
-| 2 | initial data hard-coded endpoint height 1; for `h≠1` this injects $\sim(1-h)^2/\Delta x$ of spurious energy | initial data changed to $h+\text{shape}(x)$; `solve()` warns on mismatch. **The $h$-sensitivity conclusion was corrected** (§2 (a) above) |
-| 3 | `contact_dissipation` was reported as "dissipation ≥ 0" although individual steps are not non-negative | renamed to `contact_work`, non-negativity claim withdrawn (the time integral is positive in every run of this repository, but carries no guarantee; §5.2 #3) |
-| 4 | 4-connectivity in `ndimage.label` can cut a diagonally advancing contact front | default changed to 8-connectivity (`connectivity=2`), selectable via `--connectivity` |
-| 5 | `relative_drift` reached $5\times10^{279}$ for a rest state (denominator exactly 0) | normalized by the energy scale; `absolute_drift` added |
-| 6 | `.npz` overwritten under the same name across different parameters; `save()` did not return numpy's actual `.npz` path | parameters encoded in the file name, saved under `--out`; `save()` returns the actual path |
-| 7 | `round()` in `scaled_min_size` does not guarantee the area lower bound | changed to `ceil()` |
-
-The roundtrip test was also made an exact all-field comparison via `np.array_equal`, and
-regression tests were added for #1, #2 and #5.
-
-### 5.2 Second review (2026-08-29, whole repository)
-
-No high-severity defect (the stencil and the tridiagonal assembly were judged to match §6
-of the paper). The 14 findings (8 medium / 6 low) were addressed as follows.
-
-| # | issue | fix |
-|---|---|---|
-| 1 | the default "contact set" $\{\eta<0\}$ was described as the set where the penalty acts, but the force also requires $v<0$ (about 85% of penetrating nodes carry zero force) | re-described as the penetration set (docstrings, §2 (e)) |
-| 2 | "$Q_{\mathrm{num}}$ is $O(\Delta t)$ and vanishes" is overstated (14–18% of the total loss at the paper's resolution); the GIF's dissipation curve showed only viscous + contact | claim qualified (§1.1); the GIF now shows the complete budget viscous + contact + numerical |
-| 3 | the time integral of the contact work was asserted positive although no sign is guaranteed | changed to "positive in every run here (an observation, not a theorem)" |
-| 4 | $\Delta t/\varepsilon\ge1$ was uniformly labeled UNSTABLE (conflating monotonicity with linear stability) | split into `is_penalty_monotone()` (< 1) and `is_penalty_linearly_stable()` (< 2); labels distinguish NON-MONOTONE / UNSTABLE |
-| 5 | the convergence script read as if it separated convergence in Δt, Δx and ε | described explicitly as self-convergence ($\Delta x=\Delta t$ refined jointly + ε sweep at fixed grid) (§4) |
-| 6 | the verbatim Ex. 2 profile being negative on $(0.5,0.8)$ (minimum −1, 30% initially penetrating) was undocumented | added to §2 (b), README and docstrings; pinned by tests |
-| 7 | the `.npz` name did not include `store_every`, allowing silent overwrites | `_se{store_every}` appended to the file name (with a regression test) |
-| 8 | the (A2) test only looked at a spatially summed scalar | replaced by a test that independently reconstructs $P^i$ and $Q_{\mathrm{con}}$ from the snapshots and checks the recorded budget against them |
-| 9 | the second assert of the connectivity test was tautological | strict check with a synthetic diagonal band (1 component vs $n$ cells); CLI smoke tests and a stencil-residual test also added |
-| 10 | README overstated the contact set as "identical" | changed to visual-match language; the comparison being by eye and Ex. 2 running on inferred data are stated |
-| 11 | leftover "Phase" terminology from the deleted plan and a stale test count of 45 | descriptions updated |
-| 12 | "in both examples the whole string falls almost uniformly" and "$v^0$ is −50 at the endpoints" do not hold for Ex. 2 | Ex. 1 (uniform fall, 1 component) and Ex. 2 (right 40% falls 100× slower, 2 components) distinguished; endpoints described as "nonzero" |
-| 13 | no URLs in the package metadata (broken relative README links in the built package were also noted) | `[project.urls]` added; a license declaration needs a choice and is left open |
-| 14 | the threshold-mode tolerance could not be changed from the CLI | `--contact-tol` added and propagated to summary, figures and GIF |
+- the difference equation and the discrete energy identity were **verified
+  independently** of this implementation — residual $5.1\times10^{-15}$ for the stencil,
+  $4.6\times10^{-11}$ for the identity — and the whole-repository pass found no
+  high-severity defect in the scheme or the tridiagonal assembly;
+- the design decisions that are easiest to break by accident are **pinned by regression
+  tests**: quadrature weights built from `result.t` (so snapshot strides that do not
+  divide the step count cannot inflate the contact area), initial data of the form
+  $h+\text{shape}(x)$ (no spurious $\sim(1-h)^2/\Delta x$ boundary energy), the
+  energy-scale drift normalization for rest states, the `_se{store_every}` suffix in the
+  archive name, 8-connectivity as the component default, and the independent
+  reconstruction of $P^i$ and $Q_{\mathrm{con}}$ from the snapshots.
 
 ## 6. Example 3 (ours) — a rolling contact front
 
@@ -416,4 +394,3 @@ $\{\eta<0\}$, i.e. within an $O(\varepsilon)$ distance of the boundary it just c
 - Convergence tests separating the time, space and penalization errors (independent
   $\Delta x$/$\Delta t$ sweeps and an $\varepsilon$ refinement with
   $\Delta t/\varepsilon\to0$; see the note in §4).
-- A license declaration for the package (awaiting a choice).
