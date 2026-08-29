@@ -41,7 +41,7 @@ def contact_mask(result: Result, mode: ContactMode = "negative", tol: float = 1e
     ``mode="negative"`` marks ``eta < 0``, i.e. exactly the set where the penalty
     force acts in the scheme; ``mode="threshold"`` marks ``eta <= tol``, which is
     closer to ``{eta = 0}`` in the limit problem.  The paper does not say which
-    one Figures 3 and 5 use (``plan.md`` item (e)), so both are provided.
+    one Figures 3 and 5 use (``docs/notes.md`` §2 (e)), so both are provided.
     """
     if mode == "negative":
         return result.eta < 0.0

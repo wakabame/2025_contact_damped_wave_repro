@@ -17,7 +17,7 @@ continuous, equals 1 at both endpoints, equals 2 at ``x = 0.2, 0.5, 0.8``, peaks
 at 3 near ``x = 0.35`` and has a local minimum 1 near ``x = 0.65``.  The
 ``"figure"`` variant below is the reading consistent with Figure 4(a) and is the
 default; the ``"paper-literal"`` variant reproduces the printed formula verbatim
-so that the discrepancy can be documented.  See ``plan.md`` section 4 item (b).
+so that the discrepancy can be documented.  See ``docs/notes.md`` §2 (b).
 
 All profiles except ``"paper-literal"`` are written as ``h + shape(x)`` with
 ``shape(0) = shape(l) = 0``, so they stay compatible with the clamped endpoints
@@ -33,7 +33,7 @@ reproduced: a single arch given a downward velocity concentrated on its left
 half, which makes the string roll onto the obstacle from left to right instead
 of slapping down all at once.  Unlike the paper's data it is smooth and fully
 compatible with the clamped endpoints (``v^0(0) = v^0(l) = 0``), so it carries no
-initial layer at the boundary.  See ``plan.md`` Phase 7.
+initial layer at the boundary.  See ``docs/notes.md`` §6.
 """
 
 from __future__ import annotations
@@ -130,7 +130,7 @@ EXAMPLE3_WIDTH = 0.10
 def example3_eta0(x: np.ndarray, h: float = 1.0, length: float = 1.0) -> np.ndarray:
     """``eta^0 = h + 1.5 sin(pi x / l)``: a single arch of height ``h + 1.5``.
 
-    Not from the paper; see the module docstring and ``plan.md`` Phase 7.
+    Not from the paper; see the module docstring and ``docs/notes.md`` §6.
     """
     return h + EXAMPLE3_AMPLITUDE * np.sin(np.pi * x / length)
 

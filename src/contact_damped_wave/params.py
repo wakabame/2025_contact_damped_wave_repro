@@ -6,7 +6,7 @@ initial data differ.  The endpoint height ``h`` is not stated numerically in the
 text -- the boundary condition is written as ``eta^i_0 = eta^i_N = 0`` while the
 PDE (1.3) prescribes ``eta(t, 0) = eta(t, l) = h > 0`` and Figures 2/4 clearly
 show the endpoints sitting at 1.  We follow the figures and the PDE, see
-``plan.md`` section 4 item (a).
+``docs/notes.md`` §2 (a).
 """
 
 from __future__ import annotations

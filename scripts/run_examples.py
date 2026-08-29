@@ -7,7 +7,7 @@ Usage::
 
 Examples 1 and 2 are the paper's (Section 6.1, 6.2), plus the initial data
 exactly as printed there for comparison; Example 3 is our own showcase
-(``plan.md`` section 9).  The GIFs are slow to encode, so they are opt-in.
+(``docs/notes.md`` §6).  The GIFs are slow to encode, so they are opt-in.
 """
 
 from __future__ import annotations

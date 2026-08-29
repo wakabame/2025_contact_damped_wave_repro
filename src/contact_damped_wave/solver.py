@@ -22,7 +22,7 @@ Rearranging, every step is one symmetric positive definite tridiagonal solve::
 with ``P^i_j = (1 / eps) chi_{eta^i_j < 0} ( (eta^i_j - eta^{i-1}_j) / dt )^-``.
 The matrix is constant in time, so it is Cholesky-factorized once.
 
-Boundary values are held at ``eta^i_0 = eta^i_N = h`` (see ``plan.md`` item (a)).
+Boundary values are held at ``eta^i_0 = eta^i_N = h`` (see ``docs/notes.md`` §2 (a)).
 
 Discrete energy identity
 ------------------------
@@ -261,7 +261,7 @@ def solve(
         time levels are always stored.
     initial_step:
         How to start the three-level recursion, which the paper does not specify
-        (``plan.md`` item (d)).  ``"backward"`` (default) sets
+        (``docs/notes.md`` §2 (d)).  ``"backward"`` (default) sets
         ``eta^{-1} = eta^0 - dt v^0`` so that the backward difference at step 0
         reproduces ``v^0`` exactly; ``"forward"`` sets ``eta^1 = eta^0 + dt v^0``
         and starts the recursion at ``i = 1``.

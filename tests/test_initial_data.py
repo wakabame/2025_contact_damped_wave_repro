@@ -53,7 +53,7 @@ def test_example2_figure_variant_matches_figure_4a() -> None:
 
 
 def test_example2_paper_literal_variant_is_discontinuous() -> None:
-    """Documents plan.md item (b): the printed formula cannot be what was run."""
+    """Documents docs/notes.md §2 (b): the printed formula cannot be what was run."""
     x = grid(EXAMPLE2)
     eta0 = example2_eta0(x, "paper-literal")
     assert np.abs(np.diff(eta0)).max() > 1.0  # jump of ~1.2 at x = 0.8

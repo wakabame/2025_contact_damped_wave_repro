@@ -4,7 +4,7 @@
     uv run cdw animate --example 3 --out results/ex3     # animated GIF
 
 Examples 1 and 2 are the paper's (Section 6.1, 6.2); Example 3 is our own
-showcase built on the same solver (``plan.md`` Phase 7).
+showcase built on the same solver (``docs/notes.md`` §6).
 """
 
 from __future__ import annotations
@@ -71,19 +71,19 @@ def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
         "--initial",
         choices=("figure", "paper-literal"),
         default="figure",
-        help="Example 2 initial displacement variant (see plan.md item (b))",
+        help="Example 2 initial displacement variant (see docs/notes.md §2 (b))",
     )
     parser.add_argument(
         "--initial-step",
         choices=("backward", "forward"),
         default="backward",
-        help="how to start the three-level recursion (see plan.md item (d))",
+        help="how to start the three-level recursion (see docs/notes.md §2 (d))",
     )
     parser.add_argument(
         "--contact-mode",
         choices=("negative", "threshold"),
         default="negative",
-        help="criterion for the contact set (see plan.md item (e))",
+        help="criterion for the contact set (see docs/notes.md §2 (e))",
     )
     parser.add_argument("--quiet", action="store_true")
 
