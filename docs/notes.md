@@ -362,10 +362,57 @@ Outputs: `results/ex1/animation.gif` (1.5 MB), `results/ex2/animation.gif` (1.4 
 the stored snapshots of a `Result`, so a run made with a large `--store-every` animates
 just as well.
 
-## 8. Remaining work
+## 8. Localization of the contact dissipation (Thm 2.3)
 
-- Numerical check that the contact dissipation concentrates at the contact boundary
-  (Thm 2.3).
+Theorem 2.3 characterizes the contact force of the limit problem as a measure concentrated
+on $\partial\{\eta=0\}$ — a jump in stress (2.13) along the moving part of the boundary, a
+jump in velocity (2.15) on horizontal segments — with $F_{\mathrm{con}}=D_{\mathrm{con}}=0$
+in the *interior* of the contact set (the paper's Fig. 1) and, by (A3)/(2.14), nothing on
+the detaching part where $\partial_t\eta\ge0$.
+
+`scripts/dissipation_localization.py` checks the $\varepsilon$-analogue of this on the
+nodewise work density $q^i_j=-P^i_j v^{i+1/2}_j$, rebuilt from a fully stored run by
+`diagnostics.contact_work_density()` (it sums back to the recorded $Q_{\mathrm{con}}$ to
+machine precision). Outputs in `results/localization/`.
+
+**Exact structural facts** (by construction of the penalty, verified on the runs):
+
+- every dissipating cell lies in $\{\eta<0,\ v<0\}$ — the interior of the contact set
+  (string at rest) and the detachment front ($v\ge0$) carry exactly zero dissipation;
+- only 3.2% (Ex. 1) / 2.1% (Ex. 3) of the $(t,x)$ grid dissipates at all.
+
+**Concentration at the boundary.** Distance of the dissipation to the nearest boundary
+cell of $\{\eta<0\}$, Euclidean in the $(t,x)$ plane (the wave speed is 1), weighted by the
+dissipated energy, at the paper's parameters:
+
+| | $d_{50}$ | $d_{95}$ | $d_{99}$ |
+|---|---|---|---|
+| Example 1 | 1 cell ($0.4\,\varepsilon$) | $1.6\,\varepsilon$ | $2.0\,\varepsilon$ |
+| Example 3 | 1 cell ($0.4\,\varepsilon$) | $1.65\,\varepsilon$ | $2.8\,\varepsilon$ |
+
+The density maps (`ex{1,3}_density.png`) show the dissipation as a thin bright rim riding
+the *entry* portion of the boundary — the left edge of Example 1's triangle, the leading
+edge of Example 3's rolling band — with the grey interior and the trailing (detachment)
+edge dissipation-free, exactly the structure of the paper's Fig. 1.
+
+**$\varepsilon$-scaling** (Example 1, paper grid fixed, $\Delta t/\varepsilon$ =
+0.05–0.4, all monotone):
+
+| $\varepsilon$ | $4\times10^{-3}$ | $2\times10^{-3}$ | $10^{-3}$ | $5\times10^{-4}$ |
+|---|---|---|---|---|
+| $d_{95}$ | $5.9\times10^{-3}$ | $3.0\times10^{-3}$ | $1.4\times10^{-3}$ | $8.0\times10^{-4}$ |
+| $d_{95}/\varepsilon$ | 1.47 | 1.50 | 1.40 | 1.60 |
+
+$d_{95}/\varepsilon\approx1.4$–$1.6$ stays constant over a factor 8 in $\varepsilon$: the
+dissipation layer shrinks proportionally to $\varepsilon$, the discrete counterpart of
+$D_{\mathrm{con}}$ concentrating on the contact boundary as $\varepsilon\to0$. This is the
+expected mechanism — an arriving node is stopped within a handful of steps (the penalty
+damps its velocity by the factor $1-\Delta t/\varepsilon$ per step), so nearly all of its
+kinetic energy is extracted within a time of order $\varepsilon$ after it crosses into
+$\{\eta<0\}$, i.e. within an $O(\varepsilon)$ distance of the boundary it just crossed.
+
+## 9. Remaining work
+
 - Convergence tests separating the time, space and penalization errors (independent
   $\Delta x$/$\Delta t$ sweeps and an $\varepsilon$ refinement with
   $\Delta t/\varepsilon\to0$; see the note in §4).

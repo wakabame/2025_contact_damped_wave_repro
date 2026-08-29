@@ -10,6 +10,7 @@ from contact_damped_wave.diagnostics import (
     contact_area,
     contact_intervals,
     contact_mask,
+    contact_work_density,
     energy_balance,
     first_contact_time,
     penetration_depth,
@@ -81,6 +82,26 @@ def test_contact_work_matches_an_independent_reconstruction(coarse_example1) -> 
     # zero force, hence exactly zero recorded work -- that is (A2).
     force_possible = np.any((eta[:-1] < 0.0) & (v[:-1] < 0.0), axis=1)
     assert np.all(recorded[~force_possible] == 0.0)
+
+
+def test_contact_work_density_decomposes_the_recorded_budget(coarse_example1) -> None:
+    """The nodewise density sums to the recorded ``Q_con`` and lives in ``{eta<0, v<0}``.
+
+    This is the quantity behind the Thm 2.3 localization check
+    (``scripts/dissipation_localization.py``).
+    """
+    result = _run(1, coarse_example1)
+    density = contact_work_density(result)
+    rebuilt = coarse_example1.dx * density.sum(axis=1)
+    scale = np.abs(result.contact_work).max()
+    assert np.allclose(rebuilt, result.contact_work, rtol=1e-10, atol=1e-12 * scale)
+    positive = density > 0.0
+    assert positive.any()
+    force_levels = np.zeros_like(positive)
+    force_levels[1:] = (result.eta[:-1] < 0.0) & (result.v[:-1] < 0.0)
+    assert np.all(force_levels[positive])
+    with pytest.raises(ValueError, match="store_every"):
+        contact_work_density(_run(1, coarse_example1, store_every=2))
 
 
 def test_example1_stays_symmetric(coarse_example1) -> None:

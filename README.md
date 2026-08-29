@@ -36,8 +36,8 @@ reproduction record live in [docs/notes.md](docs/notes.md).
 - [x] Original **Example 3** and GIF animations ([docs/notes.md](docs/notes.md) §6–7)
 - [x] Side-by-side comparison images against the paper's figures (below,
       `scripts/make_comparison.py`)
-- [ ] Remaining: numerical check that contact dissipation localizes at the contact
-      boundary (Thm 2.3)
+- [x] Numerical check that the contact dissipation localizes at the contact boundary
+      (Thm 2.3; below, `scripts/dissipation_localization.py`)
 
 ### Reproduction summary
 
@@ -97,6 +97,26 @@ on the left edge; the visible difference is the tip, $t\approx0.26$ vs. our $0.2
 shapes, positions and extents:
 
 ![Fig. 5 vs. this reproduction](results/comparison/fig5_contact_velocity.png)
+
+### Where the contact dissipation happens (Thm 2.3)
+
+Theorem 2.3 characterizes the limit contact force as a measure living on the *boundary*
+of the contact set — zero in its interior, and zero on the detaching part where
+$\partial_t\eta\ge0$. The penalized solution shows exactly that structure: rebuilding the
+nodewise dissipation density $-P\,\partial_t\eta$ from a fully stored run
+(`scripts/dissipation_localization.py`, outputs in `results/localization/`) gives
+
+![Contact dissipation density, Example 1](results/localization/ex1_density.png)
+
+- every dissipating cell lies in $\{\eta<0,\ \partial_t\eta<0\}$, so the interior (where
+  the string is at rest) and the detachment front carry **exactly zero** dissipation;
+- 50% of the dissipated energy falls within one grid cell of the contact boundary,
+  95% within $1.6\,\varepsilon$, 99% within $2\,\varepsilon$ (Example 1; the rolling
+  front of Example 3 gives $1.65\,\varepsilon$ / $2.8\,\varepsilon$);
+- sweeping $\varepsilon$ over a factor of 8 at the paper's grid keeps
+  $d_{95}/\varepsilon\approx1.4$–$1.6$: the layer shrinks proportionally to
+  $\varepsilon$, the discrete counterpart of concentration on the boundary as
+  $\varepsilon\to0$ ([docs/notes.md](docs/notes.md) §8).
 
 ## Example 3 (original): a rolling contact front
 
@@ -162,7 +182,8 @@ uv run cdw run --example 2 --initial paper-literal --out results/ex2_paper_liter
 uv run cdw animate --example 3                   # results/ex3/animation.gif
 uv run python scripts/convergence_study.py       # self-convergence: Δx = Δt jointly, ε sweep
 uv run python scripts/make_comparison.py         # side-by-side images vs. the paper's figures
-uv run pytest                                     # validation tests (55 tests, ~5 s)
+uv run python scripts/dissipation_localization.py  # Thm 2.3: dissipation at the contact boundary
+uv run pytest                                     # validation tests (56 tests, ~5 s)
 uv run ruff check . && uv run ruff format .
 ```
 
@@ -224,9 +245,11 @@ src/contact_damped_wave/
   plotting.py               Fig. 2–5 equivalents
   animation.py              GIF animations (Pillow only)
   cli.py                    the `cdw run` / `cdw animate` commands
-tests/                      55 validation tests
+tests/                      56 validation tests
 scripts/                    run_examples.py / convergence_study.py / make_comparison.py
-results/                    generated figures, summaries, paper comparisons (comparison/)
+                            / dissipation_localization.py
+results/                    generated figures, summaries, paper comparisons (comparison/),
+                            Thm 2.3 localization check (localization/)
 paper/                      paper PDF and page images (untracked)
 ```
 

@@ -1,0 +1,34 @@
+Numerical check of Theorem 2.3: the contact dissipation of the penalized
+solution concentrates in an O(eps) layer along the entry portion of the
+contact boundary, vanishes in the interior of the contact set, and puts
+exactly nothing on the detachment front.
+
+=== Example 1 (uniform impact, triangular contact set) ===
+parameters      : l=1 T=0.3 dx=0.0002 dt=0.0002 alpha=0.01 eps=0.0005 h=1 N=5000 M=1500 dt/eps=0.4
+  dissipating cells               : 241520 (3.22% of the (t, x) grid)
+  all inside {eta<0} with v<0     : True (exact, by construction of P)
+  cells in contact with v >= 0    : 3609657 -- carry zero dissipation (the detachment front dissipates nothing, cf. (A3)/(2.14))
+  penetration depth               : 2.557e-02 (51.1 eps)
+  50% of dissipation within      : 2.000e-04 of the boundary (0.40 eps, 1.0 cells)
+  95% of dissipation within      : 8.000e-04 of the boundary (1.60 eps, 4.0 cells)
+  99% of dissipation within      : 1.000e-03 of the boundary (2.00 eps, 5.0 cells)
+
+=== Example 3 (rolling contact front) ===
+parameters      : l=1 T=0.7 dx=0.0002 dt=0.0002 alpha=0.01 eps=0.0005 h=1 N=5000 M=3500 dt/eps=0.4
+  dissipating cells               : 360056 (2.06% of the (t, x) grid)
+  all inside {eta<0} with v<0     : True (exact, by construction of P)
+  cells in contact with v >= 0    : 2731433 -- carry zero dissipation (the detachment front dissipates nothing, cf. (A3)/(2.14))
+  penetration depth               : 2.792e-02 (55.8 eps)
+  50% of dissipation within      : 2.000e-04 of the boundary (0.40 eps, 1.0 cells)
+  95% of dissipation within      : 8.246e-04 of the boundary (1.65 eps, 4.1 cells)
+  99% of dissipation within      : 1.414e-03 of the boundary (2.83 eps, 7.1 cells)
+
+=== eps sweep (Example 1, paper grid fixed) ===
+      eps  dt/eps        d50        d95        d99  d95/eps
+  4.0e-03    0.05  1.400e-03  5.886e-03  9.009e-03     1.47
+  2.0e-03    0.10  8.000e-04  3.000e-03  4.472e-03     1.50
+  1.0e-03    0.20  4.000e-04  1.400e-03  2.200e-03     1.40
+  5.0e-04    0.40  2.000e-04  8.000e-04  1.000e-03     1.60
+d95 shrinking proportionally to eps (d95/eps roughly constant) is the
+discrete counterpart of the dissipation concentrating on the boundary
+as eps -> 0.

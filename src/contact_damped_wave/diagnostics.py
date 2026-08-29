@@ -23,6 +23,7 @@ __all__ = [
     "EnergyBalance",
     "components",
     "contact_area",
+    "contact_work_density",
     "time_weights",
     "contact_intervals",
     "contact_mask",
@@ -51,6 +52,31 @@ def contact_mask(result: Result, mode: ContactMode = "negative", tol: float = 1e
     if mode == "threshold":
         return result.eta <= tol
     raise ValueError(f"mode must be 'negative' or 'threshold', got {mode!r}")
+
+
+def contact_work_density(result: Result) -> np.ndarray:
+    """Nodewise contact-work density ``-P^i_j v^{i+1/2}_j``, shape like ``result.eta``.
+
+    This is the discrete density of ``D_con`` in the ``(t, x)`` plane: row ``k``
+    (``k >= 1``) belongs to the step ``k-1 -> k``, whose penalty is rebuilt from
+    the stored levels, and row 0 is zero.  Multiplied by ``dx`` and summed over
+    ``j`` it reproduces ``result.contact_work`` exactly; multiplied by
+    ``dt * dx`` it is the energy each cell extracts.  Positive entries require
+    ``v < 0``, so the detachment front (``v >= 0``) carries exactly none of it.
+
+    Rebuilding the penalty needs every level, so the run must have been made
+    with ``store_every=1`` and the default ``initial_step="backward"``.
+    """
+    if result.store_every != 1 or result.initial_step != "backward":
+        raise ValueError(
+            "contact_work_density needs store_every=1 and initial_step='backward', got "
+            f"store_every={result.store_every}, initial_step={result.initial_step!r}"
+        )
+    eta, v = result.eta, result.v
+    density = np.zeros_like(eta)
+    penalty = np.where(eta[:-1] < 0.0, np.maximum(0.0, -v[:-1]) / result.params.eps, 0.0)
+    density[1:] = -penalty * v[1:]
+    return density
 
 
 def time_weights(result: Result) -> np.ndarray:
