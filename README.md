@@ -34,8 +34,10 @@ reproduction record live in [docs/notes.md](docs/notes.md).
 - [x] Example 2 reproduction (Fig. 4, 5)
 - [x] Two rounds of external review (codex) addressed ([docs/notes.md](docs/notes.md) §5)
 - [x] Original **Example 3** and GIF animations ([docs/notes.md](docs/notes.md) §6–7)
+- [x] Side-by-side comparison images against the paper's figures (below,
+      `scripts/make_comparison.py`)
 - [ ] Remaining: numerical check that contact dissipation localizes at the contact
-      boundary (Thm 2.3); automated side-by-side comparison images against the paper's figures
+      boundary (Thm 2.3)
 
 ### Reproduction summary
 
@@ -48,11 +50,11 @@ reproduction record live in [docs/notes.md](docs/notes.md).
 | **Ex. 2** large component | $t\in[\sim0.02,\sim0.26]$, $x\in[\sim0.1,\sim0.6]$ | $t\in[0.026,0.261]$, $x\in[0.032,0.594]$ ✓ |
 | **Ex. 2** small component | $t\in[\sim0.25,\sim0.37]$, $x\in[\sim0.65,\sim0.85]$ | $t\in[0.243,0.381]$, $x\in[0.693,0.860]$ ✓ |
 
-All six snapshots match Fig. 2 / Fig. 4 in both examples — by eye against the published
-figures; automated side-by-side comparison images are still on the to-do list, and
-Example 2 runs on initial data *inferred from* Fig. 4(a) rather than the printed formula
-(see problem 1 below). The discrete energy balance closes to machine precision
-(drift $\sim10^{-10}$). Runtime is 0.3–0.5 s per example at the paper's resolution.
+All six snapshots match Fig. 2 / Fig. 4 in both examples — see the side-by-side
+comparisons below and judge for yourself; note that Example 2 runs on initial data
+*inferred from* Fig. 4(a) rather than the printed formula (see problem 1 below). The
+discrete energy balance closes to machine precision (drift $\sim10^{-10}$). Runtime is
+0.3–0.5 s per example at the paper's resolution.
 
 **Two significant problems with the paper's description were confirmed**
 (details in [docs/notes.md](docs/notes.md)):
@@ -68,6 +70,33 @@ Example 2 runs on initial data *inferred from* Fig. 4(a) rather than the printed
    bounces instead of decaying monotonically and the contact set degrades badly, and for
    $\Delta t/\varepsilon\ge2$ the update grows and the run blows up. The paper's setting,
    $0.4$, is safely monotone.
+
+### Side-by-side comparison with the paper's figures
+
+Top rows: the corresponding figure excerpted from
+[arXiv:2412.06185](https://arxiv.org/abs/2412.06185) (© B. Muha, S. Trifunović; reproduced
+here for scholarly comparison). Bottom rows: this reproduction. Regenerate with
+`uv run python scripts/make_comparison.py` (needs the paper's PDF, see Setup).
+
+**Example 1, snapshots (Fig. 2)** — note panel (f): the paper's own $t=0.3$ snapshot still
+shows a flat contact region, consistent with our vanishing time 0.299 rather than with
+Fig. 3's $\approx0.26$ ([docs/notes.md](docs/notes.md) §3):
+
+![Fig. 2 vs. this reproduction](results/comparison/fig2_snapshots.png)
+
+**Example 1, contact set and velocity field (Fig. 3)** — the same triangle with 10 ripples
+on the left edge; the visible difference is the tip, $t\approx0.26$ vs. our $0.299$:
+
+![Fig. 3 vs. this reproduction](results/comparison/fig3_contact_velocity.png)
+
+**Example 2, snapshots (Fig. 4)**:
+
+![Fig. 4 vs. this reproduction](results/comparison/fig4_snapshots.png)
+
+**Example 2, contact set and velocity field (Fig. 5)** — two components with matching
+shapes, positions and extents:
+
+![Fig. 5 vs. this reproduction](results/comparison/fig5_contact_velocity.png)
 
 ## Example 3 (original): a rolling contact front
 
@@ -132,6 +161,7 @@ uv run cdw run --example 3                       # original example in results/e
 uv run cdw run --example 2 --initial paper-literal --out results/ex2_paper_literal
 uv run cdw animate --example 3                   # results/ex3/animation.gif
 uv run python scripts/convergence_study.py       # self-convergence: Δx = Δt jointly, ε sweep
+uv run python scripts/make_comparison.py         # side-by-side images vs. the paper's figures
 uv run pytest                                     # validation tests (55 tests, ~5 s)
 uv run ruff check . && uv run ruff format .
 ```
@@ -195,8 +225,8 @@ src/contact_damped_wave/
   animation.py              GIF animations (Pillow only)
   cli.py                    the `cdw run` / `cdw animate` commands
 tests/                      55 validation tests
-scripts/                    run_examples.py / convergence_study.py
-results/                    generated figures and summaries (data/ untracked)
+scripts/                    run_examples.py / convergence_study.py / make_comparison.py
+results/                    generated figures, summaries, paper comparisons (comparison/)
 paper/                      paper PDF and page images (untracked)
 ```
 
