@@ -27,11 +27,12 @@ reproduction record live in [docs/notes.md](docs/notes.md).
 ## Status
 
 - [x] Solver (`params` / `initial_data` / `solver` / `diagnostics` / `plotting` / `animation` / `cli`)
-- [x] Validation tests (52 tests: first-order convergence against an analytic solution,
-      exact discrete energy identity, symmetry, grid/penalty convergence)
+- [x] Validation tests (55 tests: first-order convergence against an analytic solution,
+      an independent residual check of the printed stencil, exact discrete energy
+      identity, symmetry, grid/penalty convergence, CLI smoke tests)
 - [x] Example 1 reproduction (Fig. 2, 3)
 - [x] Example 2 reproduction (Fig. 4, 5)
-- [x] Seven issues found by an external review (codex) fixed ([docs/notes.md](docs/notes.md) §5)
+- [x] Two rounds of external review (codex) addressed ([docs/notes.md](docs/notes.md) §5)
 - [x] Original **Example 3** and GIF animations ([docs/notes.md](docs/notes.md) §6–7)
 - [ ] Remaining: numerical check that contact dissipation localizes at the contact
       boundary (Thm 2.3); automated side-by-side comparison images against the paper's figures
@@ -41,34 +42,42 @@ reproduction record live in [docs/notes.md](docs/notes.md).
 | | Paper | This reproduction |
 |---|---|---|
 | **Ex. 1** first contact | ≈0.02 | 0.0236 |
-| **Ex. 1** contact set | triangle symmetric about $x=0.5$, 10 ripples on the left edge | identical (symmetry to $1.7\times10^{-12}$) |
+| **Ex. 1** contact set | triangle symmetric about $x=0.5$, 10 ripples on the left edge | same shape and ripple count, matched visually (symmetry to $1.7\times10^{-12}$) |
 | **Ex. 1** contact vanishing | ≈0.26 | 0.299 — **the only discrepancy** ([docs/notes.md](docs/notes.md) §3) |
 | **Ex. 2** connected components | 2 | 2 ✓ |
 | **Ex. 2** large component | $t\in[\sim0.02,\sim0.26]$, $x\in[\sim0.1,\sim0.6]$ | $t\in[0.026,0.261]$, $x\in[0.032,0.594]$ ✓ |
 | **Ex. 2** small component | $t\in[\sim0.25,\sim0.37]$, $x\in[\sim0.65,\sim0.85]$ | $t\in[0.243,0.381]$, $x\in[0.693,0.860]$ ✓ |
 
-All six snapshots match Fig. 2 / Fig. 4 visually in both examples. The discrete energy
-balance closes to machine precision (drift $\sim10^{-10}$). Runtime is 0.3–0.5 s per
-example at the paper's resolution.
+All six snapshots match Fig. 2 / Fig. 4 in both examples — by eye against the published
+figures; automated side-by-side comparison images are still on the to-do list, and
+Example 2 runs on initial data *inferred from* Fig. 4(a) rather than the printed formula
+(see problem 1 below). The discrete energy balance closes to machine precision
+(drift $\sim10^{-10}$). Runtime is 0.3–0.5 s per example at the paper's resolution.
 
 **Two significant problems with the paper's description were confirmed**
 (details in [docs/notes.md](docs/notes.md)):
 
-1. Example 2's initial data, as printed, is discontinuous (a jump of 1.202 at $x=0.8$)
-   and has $\eta^0(0)=0$, violating the assumption of Theorem 2.1; $E(0)$ comes out
-   9 times too large and Fig. 4 cannot be reproduced from it. We default to a formula
-   consistent with the figure (the literal formula is available via `--initial paper-literal`).
-2. The explicit penalty term has an undocumented **stability condition $\Delta t/\varepsilon<1$**.
-   The paper's setting, $0.4$, is safely inside it, but for ratios $\ge2$ the energy
-   grows and the scheme blows up.
+1. Example 2's initial data, as printed, is discontinuous (a jump of 1.202 at $x=0.8$),
+   **negative on $(0.5,0.8)$** — the sine branch dips to $-1$ at $x=0.65$, so 30% of the
+   string would start below the obstacle — and has $\eta^0(0)=0$, violating the
+   assumption of Theorem 2.1; $E(0)$ comes out 9 times too large and Fig. 4 cannot be
+   reproduced from it. We default to a formula consistent with the figure (the literal
+   formula is available via `--initial paper-literal`).
+2. The explicit penalty term has an undocumented **monotonicity condition
+   $\Delta t/\varepsilon<1$**: for $1\le\Delta t/\varepsilon<2$ the penalized velocity
+   bounces instead of decaying monotonically and the contact set degrades badly, and for
+   $\Delta t/\varepsilon\ge2$ the update grows and the run blows up. The paper's setting,
+   $0.4$, is safely monotone.
 
 ## Example 3 (original): a rolling contact front
 
 ![Example 3 animation](results/ex3/animation.gif)
 
-In both of the paper's examples the whole string falls almost uniformly, touches down
-at once, and the contact set is a shrinking triangle. Using the validated solver we
-designed one example where contact happens differently ([docs/notes.md](docs/notes.md) §6):
+In the paper's examples the fast-falling part of the string slaps down essentially at
+once and the contact set consists of shrinking triangles — one in Example 1, where the
+whole string falls uniformly, two in Example 2, where the right 40% falls a hundred
+times slower. Using the validated solver we designed one example where contact happens
+differently ([docs/notes.md](docs/notes.md) §6):
 
 $$
 \eta^0(x)=1+\tfrac32\sin(\pi x),\qquad
@@ -83,7 +92,8 @@ moving right at speed 1.24–1.46.
 
 The initial data is fully compatible with the clamped ends
 ($\eta^0(0)=\eta^0(1)=h$ and $v^0(0)=v^0(1)=0$), unlike the paper's two examples,
-where $v^0$ stays at $-50$ up to the endpoints and creates an initial layer there.
+whose initial velocities are nonzero at the endpoints ($-50$ at both ends in
+Example 1; $-50$ / $-0.5$ in Example 2) and create an initial layer there.
 
 ```bash
 uv run cdw run     --example 3 --min-component-size 20   # results/ex3/*.png
@@ -121,8 +131,8 @@ uv run cdw run --example 2                       # Fig. 4, 5 equivalents in resu
 uv run cdw run --example 3                       # original example in results/ex3
 uv run cdw run --example 2 --initial paper-literal --out results/ex2_paper_literal
 uv run cdw animate --example 3                   # results/ex3/animation.gif
-uv run python scripts/convergence_study.py       # convergence in Δt, Δx, ε
-uv run pytest                                     # validation tests (52 tests, ~3 s)
+uv run python scripts/convergence_study.py       # self-convergence: Δx = Δt jointly, ε sweep
+uv run pytest                                     # validation tests (55 tests, ~5 s)
 uv run ruff check . && uv run ruff format .
 ```
 
@@ -138,6 +148,7 @@ Main options (`uv run cdw run --help` / `uv run cdw animate --help`):
 | `--initial {figure,paper-literal}` | `figure` | Example 2 initial data ([docs/notes.md](docs/notes.md) §2 (b)) |
 | `--initial-step {backward,forward}` | `backward` | how to start the three-level recursion (§2 (d)) |
 | `--contact-mode {negative,threshold}` | `negative` | contact-set criterion (§2 (e)) |
+| `--contact-tol` | $10^{-12}$ | tolerance used by `--contact-mode threshold` |
 | `--connectivity {1,2}` | 2 | connected-component neighborhood (2 = 8-connected) |
 | `--store-every` | run: 1 / animate: 5 | snapshot thinning |
 | `--frames --fps --dpi` | 200 / 20 / 90 | `animate` only; `--dpi` controls file size |
@@ -183,7 +194,7 @@ src/contact_damped_wave/
   plotting.py               Fig. 2–5 equivalents
   animation.py              GIF animations (Pillow only)
   cli.py                    the `cdw run` / `cdw animate` commands
-tests/                      52 validation tests
+tests/                      55 validation tests
 scripts/                    run_examples.py / convergence_study.py
 results/                    generated figures and summaries (data/ untracked)
 paper/                      paper PDF and page images (untracked)

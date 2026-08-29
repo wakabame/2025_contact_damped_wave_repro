@@ -58,6 +58,11 @@ def test_example2_paper_literal_variant_is_discontinuous() -> None:
     eta0 = example2_eta0(x, "paper-literal")
     assert np.abs(np.diff(eta0)).max() > 1.0  # jump of ~1.2 at x = 0.8
     assert eta0[0] == pytest.approx(0.0)  # violates eta_0 >= c > 0
+    # The sine branch is negative on (0.5, 0.8), reaching -1 at x = 0.65: 30% of
+    # the string would start below the obstacle, in contact from t = 0.
+    assert eta0.min() == pytest.approx(-1.0)
+    assert x[eta0.argmin()] == pytest.approx(0.65, abs=1e-3)
+    assert np.mean(eta0 < 0.0) == pytest.approx(0.3, abs=0.01)
 
 
 def test_example2_velocity() -> None:

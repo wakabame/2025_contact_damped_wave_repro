@@ -59,12 +59,28 @@ def test_energy_is_non_increasing(coarse_example1) -> None:
     assert result.energy[-1] < 0.05 * result.energy[0]
 
 
-def test_contact_work_only_while_in_contact(coarse_example1) -> None:
-    """(A2): ``supp(D_con) subset supp(F_con) subset {eta <= 0}``."""
-    result = _run(1, coarse_example1)
-    active = result.contact_work > 1e-12 * result.energy[0]
-    # rate index i belongs to the step (i-1) -> i, whose penalty is built from level i-1
-    assert np.all(result.contact_fraction[:-1][active[1:]] > 0.0)
+def test_contact_work_matches_an_independent_reconstruction(coarse_example1) -> None:
+    """(A2): the penalty force lives on ``{eta < 0 and v < 0}`` and produces ``Q_con``.
+
+    With ``store_every=1`` the snapshots contain every level, so ``P^i`` and the
+    work rate can be rebuilt without looking at the solver's internals: entry
+    ``k`` of ``contact_work`` belongs to the step ``k-1 -> k``, whose penalty is
+    built from ``eta`` and the backward velocity at level ``k-1`` and multiplied
+    by the forward velocity, i.e. the backward velocity at level ``k``.
+    """
+    params = coarse_example1
+    result = _run(1, params)
+    eta, v = result.eta, result.v
+    penalty = np.where(eta[:-1] < 0.0, np.maximum(0.0, -v[:-1]) / params.eps, 0.0)
+    reconstructed = -params.dx * np.sum(penalty * v[1:], axis=1)
+    recorded = result.contact_work[1:]
+    scale = np.abs(recorded).max()
+    assert scale > 0.0  # the run does reach the obstacle
+    assert np.allclose(reconstructed, recorded, rtol=1e-10, atol=1e-12 * scale)
+    # Steps at which no node is both penetrating and moving down carry exactly
+    # zero force, hence exactly zero recorded work -- that is (A2).
+    force_possible = np.any((eta[:-1] < 0.0) & (v[:-1] < 0.0), axis=1)
+    assert np.all(recorded[~force_possible] == 0.0)
 
 
 def test_example1_stays_symmetric(coarse_example1) -> None:
@@ -86,7 +102,7 @@ def test_penetration_scales_like_eps_times_impact_speed(coarse_example1) -> None
     depths = {}
     for eps in (4e-3, 2e-3, 1e-3):
         params = coarse_example1.replace(eps=eps, dx=1 / 2000, dt=1 / 2000, T=0.1)
-        assert params.is_penalty_stable()
+        assert params.is_penalty_monotone()
         depths[eps] = penetration_depth(_run(1, params))
     for eps, depth in depths.items():
         assert depth == pytest.approx(50.0 * eps, rel=0.2), depths
@@ -194,7 +210,13 @@ def test_diagonal_front_is_one_component(coarse_example1) -> None:
     """``connectivity=1`` cuts a front that advances one node per step into pieces."""
     result = _run(1, coarse_example1)
     assert len(components(result, min_size=5, connectivity=2)) == 1
-    assert len(components(result, min_size=5, connectivity=1)) >= 1
+    # A strictly diagonal band in the (t, x) plane makes the claim sharp: one
+    # component with connectivity=2, n isolated cells with connectivity=1.
+    mask = np.zeros((result.t.size, result.x.size), dtype=bool)
+    n = min(result.t.size, result.x.size, 40)
+    mask[np.arange(n), np.arange(n)] = True
+    assert len(components(result, mask, connectivity=2)) == 1
+    assert len(components(result, mask, connectivity=1)) == n
 
 
 def test_initial_data_meets_the_boundary_condition_for_any_h(coarse_example1) -> None:

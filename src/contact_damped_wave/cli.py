@@ -85,6 +85,12 @@ def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
         default="negative",
         help="criterion for the contact set (see docs/notes.md §2 (e))",
     )
+    parser.add_argument(
+        "--contact-tol",
+        type=float,
+        default=1e-12,
+        help="tolerance used by --contact-mode threshold (eta <= tol)",
+    )
     parser.add_argument("--quiet", action="store_true")
 
 
@@ -148,10 +154,16 @@ def _resolve_params(args: argparse.Namespace) -> Params:
 def _solve_from_args(args: argparse.Namespace) -> tuple[Params, Result, float]:
     """Resolve the parameters, warn about ``dt/eps``, solve, and time it."""
     params = _resolve_params(args)
-    if not params.is_penalty_stable():
+    if not params.is_penalty_linearly_stable():
+        print(
+            f"warning: dt/eps = {params.penalty_ratio:g} >= 2; the explicit penalty force "
+            "grows step by step and the run will blow up.",
+            file=sys.stderr,
+        )
+    elif not params.is_penalty_monotone():
         print(
             f"warning: dt/eps = {params.penalty_ratio:g} >= 1; the explicit penalty force "
-            "will oscillate instead of damping monotonically.",
+            "will bounce instead of damping monotonically and degrades the contact set.",
             file=sys.stderr,
         )
     _, _, eta0, v0 = initial_data(args.example, params, args.initial)
@@ -185,7 +197,7 @@ def _run(args: argparse.Namespace) -> int:
     out = _out_dir(args)
     settings = FIGURE_SETTINGS[args.example]
 
-    mask = contact_mask(result, mode=args.contact_mode)
+    mask = contact_mask(result, mode=args.contact_mode, tol=args.contact_tol)
     report = summarize(
         result, mask, min_size=args.min_component_size, connectivity=args.connectivity
     )
@@ -207,6 +219,7 @@ def _run(args: argparse.Namespace) -> int:
         f"{contact}.png": plot_contact_set(
             result,
             mode=args.contact_mode,
+            tol=args.contact_tol,
             title=f"Example {args.example}: contact set ({args.contact_mode})",
         ),
         f"{velocity}.png": plot_velocity_field(
@@ -223,13 +236,15 @@ def _run(args: argparse.Namespace) -> int:
             print(f"wrote {out / name}")
 
     if not args.no_data:
-        # Name the archive after everything that changes the run, so that two
-        # invocations with different parameters cannot silently overwrite each
-        # other, and keep it next to the figures the same invocation produced.
+        # Name the archive after everything that changes its contents -- the
+        # problem, the numerical options, and the snapshot stride -- so that two
+        # invocations that would produce different archives cannot silently
+        # overwrite each other.  (Figures and summary.txt keep fixed names; the
+        # summary header records the options they were made with.)
         stem = (
             f"ex{args.example}_{args.initial}_{args.initial_step}"
             f"_dx{params.dx:g}_dt{params.dt:g}_eps{params.eps:g}"
-            f"_alpha{params.alpha:g}_h{params.h:g}_T{params.T:g}"
+            f"_alpha{params.alpha:g}_h{params.h:g}_T{params.T:g}_se{args.store_every:d}"
         )
         data_path = result.save(out / f"{stem}.npz")
         if not args.quiet:
@@ -250,6 +265,7 @@ def _animate(args: argparse.Namespace) -> int:
         fps=args.fps,
         ylim=settings["ylim"],
         contact_mode=args.contact_mode,
+        tol=args.contact_tol,
         title=settings["label"],
         dpi=args.dpi,
         progress=not args.quiet,

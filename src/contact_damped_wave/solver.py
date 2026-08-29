@@ -42,8 +42,11 @@ the *exact* identity
 
 ``Q_visc`` and ``Q_num`` are sums of squares, hence non-negative.  ``Q_visc`` is
 the discrete counterpart of ``alpha int |partial_tx eta|^2`` in the energy
-balance (1.4) and ``Q_num`` is the purely numerical dissipation of the scheme
-(``O(dt)``, it vanishes in the limit).
+balance (1.4) and ``Q_num`` is the purely numerical dissipation of the scheme.
+``Q_num`` is formally ``O(dt)`` for smooth solutions at fixed ``eps``, but it
+does **not** vanish uniformly through impacts when ``dt/eps`` is held fixed: at
+the paper's resolution it still carries 14--18% of the total energy loss of the
+two examples, so it must be kept in the budget rather than dismissed.
 
 ``Q_con`` is the *work* extracted by the penalty force, the discrete counterpart
 of ``int D_con``.  It is **not** non-negative step by step: ``P^i`` is built from
@@ -52,7 +55,9 @@ the few steps where a node reverses direction ``Q_con`` can dip slightly below
 zero.  The dip is an ``O(dt)`` artefact of the explicit penalization -- relative
 to the energy it removes it is below ``4e-9`` at ``dx = dt = 1/500`` and below
 ``4e-14`` at the paper's resolution -- so the field is called ``contact_work``
-rather than a dissipation.  Its time integral is positive.
+rather than a dissipation.  The explicit penalization does not guarantee a sign
+for its time integral either; in every run in this repository the integral comes
+out positive, but that is an observation, not a theorem.
 
 :func:`solve` records the three rates at every step so that the balance closes to
 machine precision.
@@ -110,7 +115,8 @@ class Result:
     min_eta:
         ``min_j eta^i_j``; the penetration depth is ``max(0, -min_eta)``.
     contact_fraction:
-        Fraction of nodes with ``eta^i_j < 0`` (the set where the penalty acts).
+        Fraction of nodes with ``eta^i_j < 0`` (the penetration set; the penalty
+        force acts on the subset of it where additionally ``v^i_j < 0``).
     """
 
     params: Params

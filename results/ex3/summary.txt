@@ -2,7 +2,7 @@ Example 3 (initial=figure, contact_mode=negative)
 parameters      : l=1 T=0.7 dx=0.0002 dt=0.0002 alpha=0.01 eps=0.0005 h=1 N=5000 M=3500 dt/eps=0.4
 initial step    : backward, store_every=1
 energy          : E(0)=504.343 -> E(T)=7.86065
-  dissipated    : viscous=155.697, contact=273.349, numerical=67.4365
+  energy lost   : viscous=155.697, contact work=273.349, numerical=67.4365
   balance drift : 7.957e-10 (relative)
 energy monotone : True
   min rates     : viscous=0 (>= 0), numerical=0 (>= 0), contact work=-6.018e-07 (may dip < 0 by O(dt), see solver docstring)

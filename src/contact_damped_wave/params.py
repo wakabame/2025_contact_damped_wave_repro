@@ -83,9 +83,13 @@ class Params:
         """``dt / eps``.
 
         During penetration (``eta < 0`` and ``v < 0``) the explicit penalty term
-        updates the velocity roughly as ``v <- (1 - dt / eps) v``.  The paper's
-        setting gives ``dt / eps = 0.4``, i.e. a monotone decay to zero (no
-        bounce).  Values ``>= 1`` oscillate and ``>= 2`` are unstable.
+        updates the velocity roughly as ``v <- (1 - dt / eps) v``.  For that
+        isolated update, ``dt / eps < 1`` decays monotonically (the paper's
+        setting gives ``0.4``), ``= 1`` reaches zero in a single step,
+        ``1 < dt / eps < 2`` oscillates while decaying (a spurious bounce), and
+        ``>= 2`` grows.  In practice already ``dt / eps = 1`` degrades the
+        contact set badly (see ``docs/notes.md`` §4), so the monotone range is
+        the one to stay in.
         """
         return self.dt / self.eps
 
@@ -94,9 +98,21 @@ class Params:
         """``alpha * dt + dt**2``: the factor multiplying the implicit Laplacian."""
         return self.alpha * self.dt + self.dt**2
 
-    def is_penalty_stable(self) -> bool:
-        """Whether the explicit penalty force decays monotonically (``dt / eps < 1``)."""
+    def is_penalty_monotone(self) -> bool:
+        """Whether the explicit penalty force decays monotonically (``dt / eps < 1``).
+
+        This is the property the runs in this repository rely on; see
+        :attr:`penalty_ratio` for the full picture.
+        """
         return self.penalty_ratio < 1.0
+
+    def is_penalty_linearly_stable(self) -> bool:
+        """Whether the isolated penalty update does not grow (``dt / eps < 2``).
+
+        Weaker than :meth:`is_penalty_monotone`: ratios in ``[1, 2)`` decay but
+        oscillate (a spurious bounce during penetration).
+        """
+        return self.penalty_ratio < 2.0
 
     def replace(self, **changes: float) -> Params:
         """Return a copy with the given fields replaced."""

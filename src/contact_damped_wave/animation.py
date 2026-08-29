@@ -165,17 +165,19 @@ def animate(
     ax_contact.set_title(f"contact set ({contact_mode})", fontsize=10)
 
     # --- energy panel -------------------------------------------------------
+    # Show the *complete* budget: viscous + contact + numerical.  The numerical
+    # term is 14-18% of the loss at the paper's resolution, so leaving it out
+    # would make the two curves visibly fail to mirror each other.
+    dissipated = balance.dissipated_cumulative
     ax_energy.plot(balance.t, balance.energy, color="0.85", lw=1.0)
-    ax_energy.plot(balance.t, balance.physical_cumulative, color="0.85", lw=1.0)
+    ax_energy.plot(balance.t, dissipated, color="0.85", lw=1.0)
     (energy_line,) = ax_energy.plot([], [], color="#2d6ca2", lw=1.6, label="energy $E(t)$")
     (dissipated_line,) = ax_energy.plot(
-        [], [], color="#b5651d", lw=1.6, label="dissipated (visc. + contact)"
+        [], [], color="#b5651d", lw=1.6, label="dissipated (visc. + contact + num.)"
     )
     energy_cursor = ax_energy.axvline(t_first, color=_CURVE_COLOR, lw=1.2)
     ax_energy.set_xlim(t_first, t_last)
-    ax_energy.set_ylim(
-        0.0, 1.05 * float(max(balance.energy.max(), balance.physical_cumulative[-1]))
-    )
+    ax_energy.set_ylim(0.0, 1.05 * float(max(balance.energy.max(), dissipated[-1])))
     ax_energy.set_xlabel("t")
     ax_energy.set_ylabel("energy")
     ax_energy.legend(fontsize=8, loc="center right")
@@ -201,7 +203,7 @@ def animate(
         energy_cursor.set_xdata([time, time])
         upto = full_index[i] + 1
         energy_line.set_data(balance.t[:upto], balance.energy[:upto])
-        dissipated_line.set_data(balance.t[:upto], balance.physical_cumulative[:upto])
+        dissipated_line.set_data(balance.t[:upto], dissipated[:upto])
         if progress and frame % report_every == 0:
             print(f"  frame {frame}/{indices.size}  t={time:.4f}")
         return curve, touching, clock, veil, contact_cursor, energy_cursor, energy_line

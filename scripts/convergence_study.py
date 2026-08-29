@@ -3,7 +3,13 @@
 Section 6 of the paper states that "we tested the numerical convergence with
 respect to both the time and space discretization parameters, as well as the
 penalization parameter eps" but reports no data.  This script produces that
-table for both examples.
+table for both examples, in the paper's own setting: the grid sweep refines
+``dx = dt`` *jointly* and the eps sweep varies ``eps`` at a fixed grid, each
+compared against the finest member of its own sweep.  It is a self-convergence
+check, not a separation of the time, space and penalization errors -- that
+would need independent ``dx``/``dt`` sweeps and an eps refinement with
+``dt/eps -> 0``, which the explicit penalty couples (``dt < eps`` is required,
+see ``Params.penalty_ratio``).
 
 Usage::
 
@@ -77,18 +83,25 @@ def _row(example: int, step: float, eps: float, min_size: int) -> tuple[str, dic
             for c in comps
         ],
         "store_every": store_every,
-        "penalty_stable": params.is_penalty_stable(),
+        "penalty_monotone": params.is_penalty_monotone(),
+        "penalty_linearly_stable": params.is_penalty_linearly_stable(),
         "energy_initial": float(result.energy[0]),
         "energy_final": float(result.energy[-1]),
         "balance_drift": balance.relative_drift,
         "eta_final": result.eta[-1].tolist(),
     }
+    if not params.is_penalty_linearly_stable():
+        note = "UNSTABLE (dt/eps >= 2)"
+    elif not params.is_penalty_monotone():
+        note = "NON-MONOTONE (dt/eps >= 1)"
+    else:
+        note = ""
     line = (
         f"{step:9.2e} {eps:9.2e} {params.penalty_ratio:7.2f} "
         f"{'n/a' if start is None else f'{start:10.4f}':>10} "
         f"{record['contact_area']:10.5f} {record['penetration']:10.3e} "
         f"{len(comps):6d} {record['energy_final']:10.4g} {record['balance_drift']:9.1e}"
-        f"  {'' if params.is_penalty_stable() else 'UNSTABLE (dt/eps >= 1)'}"
+        f"  {note}"
     )
     return line, record
 

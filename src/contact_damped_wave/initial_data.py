@@ -11,8 +11,10 @@ Example 2 (Section 6.2) is printed in the paper as::
             2 - x                   for 0.8 <= x < 1,
 
 which is discontinuous at ``x = 0.2`` (0.2 -> 0) and at ``x = 0.8`` (0 -> 1.2),
-violates the standing assumption ``eta_0 >= c > 0`` of Theorem 2.1 (it gives
-``eta^0(0) = 0``) and does not match Figure 4(a), where the profile is
+*negative* on ``(0.5, 0.8)`` -- the sine branch reaches ``-1`` at ``x = 0.65``,
+so 30% of the string starts below the obstacle -- violates the standing
+assumption ``eta_0 >= c > 0`` of Theorem 2.1 (it gives ``eta^0(0) = 0``, and
+``eta^0 < 0`` inside) and does not match Figure 4(a), where the profile is
 continuous, equals 1 at both endpoints, equals 2 at ``x = 0.2, 0.5, 0.8``, peaks
 at 3 near ``x = 0.35`` and has a local minimum 1 near ``x = 0.65``.  The
 ``"figure"`` variant below is the reading consistent with Figure 4(a) and is the
