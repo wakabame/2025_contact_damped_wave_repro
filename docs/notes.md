@@ -1,14 +1,16 @@
-# 再現ノート — arXiv:2412.06185 Section 6
+# Reproduction notes — arXiv:2412.06185, Section 6
 
-Phase 1–4 の実装・検証で分かったことの記録。数値はすべて本リポジトリの
-`uv run python scripts/run_examples.py` / `scripts/convergence_study.py` の出力による。
+A record of what was learned while implementing and validating the reproduction of the
+paper's two examples and our own Example 3. Every number comes from the output of
+`uv run python scripts/run_examples.py` / `scripts/convergence_study.py` in this repository.
 
 ---
 
-## 1. スキームの整理と実装
+## 1. The scheme, reorganized for implementation
 
-論文 §6 の差分式は、離散ラプラシアン $(D u)_j=(u_{j+1}-2u_j+u_{j-1})/\Delta x^2$ を使うと
-各ステップが**時間に依らない対称正定値三重対角系**になる:
+With the discrete Laplacian $(D u)_j=(u_{j+1}-2u_j+u_{j-1})/\Delta x^2$, the finite-difference
+equation of §6 of the paper turns into a **time-independent symmetric positive-definite
+tridiagonal system** per step:
 
 $$
 \big[I-(\alpha\Delta t+\Delta t^2)D\big]\eta^{i+1}
@@ -16,14 +18,16 @@ $$
 P^i_j=\frac1\varepsilon\mathbf 1_{\{\eta^i_j<0\}}\Big(\frac{\eta^i_j-\eta^{i-1}_j}{\Delta t}\Big)^{-}.
 $$
 
-論文設定では $(\alpha\Delta t+\Delta t^2)/\Delta x^2=51$、すなわち $\mathrm{tridiag}(-51,103,-51)$。
-`cholesky_banded` で 1 回だけ分解し、各ステップ `cho_solve_banded` で $O(N)$。
-論文設定（$N=5000$）で Example 1 が 0.28 秒、Example 2 が 0.47 秒。
+At the paper's parameters $(\alpha\Delta t+\Delta t^2)/\Delta x^2=51$, i.e. the matrix is
+$\mathrm{tridiag}(-51,103,-51)$. It is factorized once with `cholesky_banded` and each step
+is an $O(N)$ `cho_solve_banded`. At the paper's resolution ($N=5000$) Example 1 runs in
+0.30 s, Example 2 in 0.48 s, Example 3 in 0.66 s.
 
-### 1.1 厳密な離散エネルギー恒等式
+### 1.1 An exact discrete energy identity
 
-$v^{i+1/2}=(\eta^{i+1}-\eta^i)/\Delta t$ を掛けて和をとる（端点で $v=0$ なので部分和分は厳密）と、
-$E^i=\frac{\Delta x}2\sum_j(v^{i-1/2}_j)^2+\frac{\Delta x}2\sum_j(\delta_x\eta^i_j)^2$ に対し
+Testing the scheme with $v^{i+1/2}=(\eta^{i+1}-\eta^i)/\Delta t$ and summing (summation by
+parts is exact because $v=0$ at the endpoints) gives, for
+$E^i=\frac{\Delta x}2\sum_j(v^{i-1/2}_j)^2+\frac{\Delta x}2\sum_j(\delta_x\eta^i_j)^2$,
 
 $$
 E^{i+1}-E^i=-\Delta t\,[\,Q_{\mathrm{visc}}+Q_{\mathrm{num}}+Q_{\mathrm{con}}\,],
@@ -36,181 +40,331 @@ $$
 Q_{\mathrm{con}}=-\Delta x\sum_jP^i_jv^{i+1/2}_j .
 $$
 
-$Q_{\mathrm{visc}}$ が (1.4) の $\alpha\int|\partial_{tx}\eta|^2$、$Q_{\mathrm{con}}$ が $\int D_{\mathrm{con}}$、
-$Q_{\mathrm{num}}$ はスキーム由来の $O(\Delta t)$ の数値散逸に対応する。ソルバーはこの 3 つを
-毎ステップ記録するので、収支は**機械精度で閉じる**（drift $\sim10^{-10}$、1500–2500 ステップの丸め蓄積）。
+$Q_{\mathrm{visc}}$ is the discrete counterpart of $\alpha\int|\partial_{tx}\eta|^2$ in (1.4),
+$Q_{\mathrm{con}}$ of $\int D_{\mathrm{con}}$, and $Q_{\mathrm{num}}$ is the numerical
+dissipation of the scheme itself. $Q_{\mathrm{num}}$ is $O(\Delta t)$ for smooth solutions at
+fixed $\varepsilon$, but it does not vanish uniformly through impacts when
+$\Delta t/\varepsilon$ is held fixed: **even at the paper's resolution it carries 14–18% of
+the total energy loss** (Ex. 1: 18%, Ex. 2: 14%). The solver records all three rates at
+every step, so the budget **closes to machine precision** (drift $\sim10^{-10}$, the round-off
+accumulated over 1500–2500 steps).
 
-> **最初の実装ミス**: 後退差分速度 $v^{i-1/2}$ で $\alpha\int|\delta_xv|^2$ を評価し台形則で積分していたため、
-> 収支の drift が 17.8（累積粘性散逸 23293 に対し実際の散逸は 1300）になった。上の恒等式に直して解決。
+> **Initial implementation mistake**: evaluating $\alpha\int|\delta_xv|^2$ with the backward
+> velocity $v^{i-1/2}$ and integrating with the trapezoidal rule gave a budget drift of 17.8
+> (a cumulative viscous dissipation of 23293 against an actual dissipation of 1300). Switching
+> to the identity above resolved it.
 
-### 1.2 陽的ペナルティの安定条件（論文に記載なし）
+### 1.2 Stability condition of the explicit penalty (not stated in the paper)
 
-貫入中（$\eta<0,\ v<0$）の速度更新は $v\leftarrow(1-\Delta t/\varepsilon)v$ に近く、
+While penetrating ($\eta<0,\ v<0$) the velocity update is close to
+$v\leftarrow(1-\Delta t/\varepsilon)v$, so
 
-- $\Delta t/\varepsilon<1$: 単調減衰（跳ね返りなし。理論の (A4) と整合）
-- $\Delta t/\varepsilon\ge1$: 振動、$\ge2$: エネルギーが増加して破綻
+- $\Delta t/\varepsilon<1$: monotone decay (no bounce; consistent with assumption (A4) of
+  the theory)
+- $1\le\Delta t/\varepsilon<2$: decays but oscillates (a spurious bounce). Linearly stable,
+  yet already at $\Delta t/\varepsilon=1$ the contact set degrades badly (table in §4)
+- $\Delta t/\varepsilon\ge2$: amplifies; the energy grows and the run blows up
 
-数値確認（Example 1, $\Delta x=\Delta t=1/500$, $T=0.1$）:
+Numerical check (Example 1, $\Delta x=\Delta t=1/500$, $T=0.1$):
 
 | $\Delta t/\varepsilon$ | 0.1 | 0.2 | 0.4 | 0.5 | 1.0 | 2.0 |
 |---|---|---|---|---|---|---|
 | $E(T)$ | 47.1 | 32.4 | 24.6 | 23.0 | 19.8 | **432.3** |
-| 累積接触散逸 | 1064 | 1013 | 868 | 784 | 214 | **−2372** |
+| cumulative contact work | 1064 | 1013 | 868 | 784 | 214 | **−2372** |
 
-論文設定は $\Delta t/\varepsilon=0.4$ で安全側。**この制約のため $\varepsilon\to0$ と $\Delta t\to0$ は独立に取れない**
-（$\varepsilon$ を細かくするには $\Delta t$ も細かくする必要がある）。
+The paper's setting, $\Delta t/\varepsilon=0.4$, is safely monotone. **Because of this
+constraint, $\varepsilon\to0$ and $\Delta t\to0$ cannot be taken independently** (refining
+$\varepsilon$ requires refining $\Delta t$ with it).
 
-### 1.3 貫入深さ
+### 1.3 Penetration depth
 
-貫入中の ODE は $v'=-v/\varepsilon$ なので $\max(0,-\eta)\approx|v_0|\varepsilon$。
-論文設定で $|v_0|\varepsilon=50\times5\times10^{-4}=0.025$、実測 $2.56\times10^{-2}$（Ex.1）/ $2.49\times10^{-2}$（Ex.2）。
-理論の $\eta\ge-C\varepsilon$ と整合（$C\approx|v_0|$）。
+While penetrating, the ODE is $v'=-v/\varepsilon$, so $\max(0,-\eta)\approx|v_0|\varepsilon$.
+At the paper's parameters $|v_0|\varepsilon=50\times5\times10^{-4}=0.025$; measured
+$2.56\times10^{-2}$ (Ex. 1) / $2.49\times10^{-2}$ (Ex. 2). Consistent with the theoretical
+$\eta\ge-C\varepsilon$ (with $C\approx|v_0|$).
 
 ---
 
-## 2. 論文記述の不整合（plan.md §4 の裏付け）
+## 2. Inconsistencies in the paper's description and what we adopted
 
-### (b) Example 2 の初期データ — 決定的
+### (b) Example 2's initial data — decisive
 
-原文式 `x`, `sin(π(x−0.2)/0.3)`, `2−x` を**そのまま**使うと:
+Using the printed formulas `x`, `sin(π(x−0.2)/0.3)`, `2−x` **verbatim** gives:
 
-| | 図版整合（既定） | 原文ママ |
+| | figure-consistent (default) | printed verbatim |
 |---|---|---|
-| 隣接ノード最大差 | $2.09\times10^{-3}$（= Lipschitz 定数 $\pi/0.3$ × $\Delta x$） | **1.202**（$x=0.8$ でジャンプ） |
-| $\eta^0(0)$ | 1 | **0**（Thm 2.1 の仮定 $\eta_0\ge c>0$ に反する） |
-| 弾性エネルギー | 21.4 | **3729.0**（内部の不連続由来）|
-| 端点クランプによる追加 | 0 | **+2499.0**（$\eta^0(0)=0\to h=1$ の強制）|
-| $E(0)$（= 弾性 + 運動 749.8） | 771.2 | **6977.8**（9 倍）|
-| 初回接触時刻 | 0.0256 | **0.0000**（$x=0.5,0.8$ で $\eta^0=0$、初めから接触） |
+| max difference between adjacent nodes | $2.09\times10^{-3}$ (= Lipschitz constant $\pi/0.3$ × $\Delta x$) | **1.202** (jump at $x=0.8$) |
+| $\eta^0(0)$ | 1 | **0** (violates the assumption $\eta_0\ge c>0$ of Thm 2.1) |
+| $\min\eta^0$ | 1 (local minimum at $x=0.65$) | **−1** (at $x=0.65$; negative on $(0.5,0.8)$, 30% of the string starts below the obstacle) |
+| elastic energy | 21.4 | **3729.0** (from the interior discontinuities) |
+| added by endpoint clamping | 0 | **+2499.0** (forcing $\eta^0(0)=0\to h=1$) |
+| $E(0)$ (= elastic + kinetic 749.8) | 771.2 | **6977.8** (9× too large) |
+| first contact time | 0.0256 | **0.0000** ($\eta^0<0$ on $(0.5,0.8)$, in contact from the start) |
 
-原文式の $E(0)$ の内訳: 内部の不連続が 3729、境界条件 (1.3) との不整合を強制的に
-クランプすることによる分が 2499（これは $\Delta x\to0$ で発散する数値的な人工物）、運動 749.8。
-どちらの寄与も figure 版の弾性 21.4 に比べて桁違いに大きい。
+Breakdown of $E(0)$ for the verbatim formula: 3729 from the interior discontinuities, 2499
+from forcibly clamping the mismatch with boundary condition (1.3) (a numerical artifact that
+diverges as $\Delta x\to0$), kinetic 749.8. Both contributions dwarf the figure variant's
+elastic energy of 21.4.
 
-Fig. 4(a) は連続で端点 1、$x=0.2,0.5,0.8$ で 2、最大 3（$x=0.35$）、極小 1（$x=0.65$）。
-既定の figure 版はこれを全て満たす（`tests/test_initial_data.py` で検証）。
-**原文式では Fig. 4 は生成できない**。`--initial paper-literal` で再現可能（`results/ex2_paper_literal/`）。
+Fig. 4(a) shows a continuous profile with endpoints at 1, value 2 at $x=0.2,0.5,0.8$,
+maximum 3 (at $x=0.35$), local minimum 1 (at $x=0.65$). The default figure variant satisfies
+all of this (verified in `tests/test_initial_data.py`). **The printed formula cannot produce
+Fig. 4.** It can be run with `--initial paper-literal` (`results/ex2_paper_literal/`).
 
-### (a) 境界条件
+### (a) Boundary condition
 
-原文 $\eta^i_0=\eta^i_N=0$ に対し PDE (1.3) は $\eta=h>0$、Fig. 2/4 は端点 1。$h=1$ を採用。
+The paper prints $\eta^i_0=\eta^i_N=0$, but the PDE (1.3) prescribes $\eta=h>0$ and
+Figs. 2/4 show the endpoints at 1. We adopt $h=1$.
 
-初期データは $\eta^0=h+\text{shape}(x)$（$\text{shape}(0)=\text{shape}(l)=0$）の形で定義してあり、
-どの $h$ でも境界条件 (1.3) と整合する。$h$ 依存性:
+The initial data are defined in the form $\eta^0=h+\text{shape}(x)$ (with
+$\text{shape}(0)=\text{shape}(l)=0$), so they are compatible with (1.3) for any $h$.
+Dependence on $h$:
 
-| $h$ | 0.5 | 1.0（論文） | 1.5 | 2.0 |
+| $h$ | 0.5 | 1.0 (paper) | 1.5 | 2.0 |
 |---|---|---|---|---|
 | $E(0)$ | 1311.43 | 1311.43 | 1311.43 | 1311.43 |
-| 初回接触 $t_{\min}$ | 0.0112 | 0.0236 | 0.0346 | 0.0436 |
-| 接触消滅 $t_{\max}$ | 0.3000 | 0.2990 | 0.1984 | 0.2368 |
-| 接触面積 | 0.1702 | 0.1542 | 0.1128 | 0.1223 |
+| first contact $t_{\min}$ | 0.0112 | 0.0236 | 0.0346 | 0.0436 |
+| contact vanishing $t_{\max}$ | 0.3000 | 0.2990 | 0.1984 | 0.2368 |
+| contact area | 0.1702 | 0.1542 | 0.1128 | 0.1223 |
 
-$E(0)$ が $h$ に依らないのは弾性エネルギーが $\partial_x\eta$ のみに依るため。
-$t_{\min}$ は $h$ に単調（落下距離が伸びる）だが、$t_{\max}$ は**非単調**。
-論文の $h=1$ は Fig. 2/4 の端点値から確定しているので、これは §3 の差異の説明にはならない。
+$E(0)$ is independent of $h$ because the elastic energy depends only on $\partial_x\eta$.
+$t_{\min}$ is monotone in $h$ (a longer fall), but $t_{\max}$ is **non-monotone**. Since the
+paper's $h=1$ is pinned down by the endpoint values in Figs. 2/4, this cannot explain the
+discrepancy of §3.
 
-> **注意（初版の誤り）**: 当初は初期データを $h$ に依らず端点 1 に固定していたため、
-> $h\ne1$ では最初のセルに大きさ $|1-h|$ のジャンプが生じ、
-> $\sim(1-h)^2/\Delta x$ の偽の弾性エネルギーが入っていた（$\Delta x\to0$ で発散する）。
-> その状態で得た「$h$ はほぼ無影響」という結論は誤りだった。現在は端点不整合があると
-> `solve()` が `RuntimeWarning` を出す。
+> **Caution (an error in the first version)**: the initial data originally hard-coded
+> endpoint height 1 regardless of $h$, so for $h\ne1$ the first cell carried a jump of size
+> $|1-h|$ and $\sim(1-h)^2/\Delta x$ of spurious elastic energy (divergent as
+> $\Delta x\to0$). The conclusion "$h$ has almost no influence" obtained in that state was
+> wrong. `solve()` now raises a `RuntimeWarning` when the endpoints disagree with $h$.
 
-### (d) 初期ステップ
+### (d) Initial step
 
-$\eta^{-1}=\eta^0-\Delta t v^0$（既定）と $\eta^1=\eta^0+\Delta t v^0$ の両方を実装。
-どちらもエネルギー収支は機械精度で閉じる（後者は $i\ge1$ から）。
+Both $\eta^{-1}=\eta^0-\Delta t v^0$ (default) and $\eta^1=\eta^0+\Delta t v^0$ are
+implemented. The energy budget closes to machine precision either way (for the latter from
+$i\ge1$ on).
 
-### (e) 接触集合の判定基準
+### (e) Criterion for the contact set
 
-$\{\eta<0\}$ と $\{\eta\le\text{tol}\}$ の差は**面積比で 1% 未満**（Example 1, tol $=10^{-3}$ でも 1.2%）。
-plan.md が懸念したほど敏感ではなかった。既定は $\{\eta<0\}$（ペナルティ発動集合と一致）。
+The difference between $\{\eta<0\}$ and $\{\eta\le\text{tol}\}$ is **below 1% in area**
+(1.2% for Example 1 even at tol $=10^{-3}$) — less sensitive than we had feared when
+planning. The default is $\{\eta<0\}$ (the **penetration set**; it contains the support of
+the penalty force but does not equal it — the force also requires $v<0$, and about 85% of
+penetrating nodes have $v\ge0$ and carry zero force). The tolerance can be changed with
+`--contact-tol`.
 
----
+### Other (minor)
 
-## 3. 再現結果
-
-### Example 1（Fig. 2, 3）
-
-| 項目 | 論文 | 本再現 |
-|---|---|---|
-| 初回接触 | ≈0.02 | 0.0236 |
-| 接触集合の $x$ 範囲（最大時） | ≈[0.05, 0.95] | [0.032, 0.968] |
-| 対称性 | $x=0.5$ に対し対称 | $\le1.7\times10^{-12}$ で対称（丸め） |
-| 左縁の波打ち | 10 個 | 10 個 ✓ |
-| 接触消滅時刻 | **≈0.26** | **0.299** ← 差異 |
-| 速度場の値域 | $[-60,10]$ | 同等（離脱フロントに正の帯）✓ |
-| $t=0.2$ の接触区間 | ≈[0.3,0.7] | ≈[0.28,0.75] |
-
-スナップショット（$t=0,0.02,0.04,0.06,0.2,0.3$）は 6 枚とも Fig. 2 と目視一致。
-
-### Example 2（Fig. 4, 5）
-
-| 項目 | 論文 Fig. 5 | 本再現 |
-|---|---|---|
-| 連結成分数 | **2** | **2** ✓ |
-| 大成分 | $t\in[\sim0.02,\sim0.26]$, $x\in[\sim0.1,\sim0.6]$ | $t\in[0.026,0.261]$, $x\in[0.032,0.594]$ ✓ |
-| 小成分 | $t\in[\sim0.25,\sim0.37]$, $x\in[\sim0.65,\sim0.85]$ | $t\in[0.243,0.381]$, $x\in[0.693,0.860]$ ✓ |
-| 大成分の先端 | $x\approx0.35$–$0.4$ | $x\approx0.35$ ✓ |
-| 速度場の値域 | $[-50,40]$ | 同等 ✓ |
-
-スナップショット 6 枚とも Fig. 4 と目視一致（$t=0.04$ の 2 か所接触・右の山 1.75、$t=0.08$ の $[0.1,0.6]$ 接触など）。
-
-### 唯一の差異: Example 1 の接触消滅時刻（0.26 vs 0.30）
-
-- 格子・$\varepsilon$ に関して**収束済み**（$\Delta x=10^{-4}$ でも 0.300）。数値誤差ではない。
-- $h$ と $\alpha$ のどちらにも**非単調**に依存する（$h$: 上表、$\alpha$: 0.005→0.177, 0.01→0.299,
-  0.02→0.300, 0.05→0.184）。$h=1$・$\alpha=0.01$ は論文が明示しているので、
-  パラメータのずれでは説明できない。
-- 論文自身の Fig. 2(f)（$t=0.3$）は $x\in[0.42,0.58]$ で $\eta$ が 0 に貼り付いて見えており、
-  Fig. 3 の「$t\approx0.26$ で消滅」と**論文内部でも整合しない**。印刷解像度では
-  $\eta\in(0,0.01)$ と $\eta=0$ を区別できないため、離脱直前の極めて浅い領域
-  （本再現では $t=0.27$ で $\min\eta=-2.3\times10^{-3}$）の扱いの差と考えられる。
-- 未記載の実装詳細（初期ステップ、境界近傍の扱い等）に起因する可能性が高く、
-  **パラメータを合わせ込むことはしていない**。
+- **(c) Index conventions**: the paper's "$0\le i\le l/\Delta x$, $1\le j\le T/\Delta t$" is
+  the opposite of how the formulas use the indices. Reading **superscript $i$ = time,
+  subscript $j$ = space** makes everything consistent.
+- **(f) Caption of Fig. 4**: says "example 1" but is a typo for example 2; treated as
+  example 2.
 
 ---
 
-## 4. 収束テスト（論文が「実施した」と述べているもの）
+## 3. Reproduction results
 
-`results/convergence/convergence.txt`。Example 1、$\varepsilon=5\times10^{-4}$ 固定:
+### Example 1 (Fig. 2, 3)
 
-| $\Delta x=\Delta t$ | $\Delta t/\varepsilon$ | 接触面積 | $\|\eta(T)-\eta_{\mathrm{ref}}\|_\infty$ | 備考 |
+| item | paper | this reproduction |
+|---|---|---|
+| first contact | ≈0.02 | 0.0236 |
+| $x$-range of the contact set (at its widest) | ≈[0.05, 0.95] | [0.032, 0.968] |
+| symmetry | symmetric about $x=0.5$ | symmetric to $\le1.7\times10^{-12}$ (round-off) |
+| ripples on the left edge | 10 | 10 ✓ |
+| contact vanishing time | **≈0.26** | **0.299** ← discrepancy |
+| range of the velocity field | $[-60,10]$ | equivalent (positive band along the detachment front) ✓ |
+| contact interval at $t=0.2$ | ≈[0.3,0.7] | ≈[0.28,0.75] |
+
+All six snapshots ($t=0,0.02,0.04,0.06,0.2,0.3$) match Fig. 2 visually.
+
+### Example 2 (Fig. 4, 5)
+
+| item | paper Fig. 5 | this reproduction |
+|---|---|---|
+| number of connected components | **2** | **2** ✓ |
+| large component | $t\in[\sim0.02,\sim0.26]$, $x\in[\sim0.1,\sim0.6]$ | $t\in[0.026,0.261]$, $x\in[0.032,0.594]$ ✓ |
+| small component | $t\in[\sim0.25,\sim0.37]$, $x\in[\sim0.65,\sim0.85]$ | $t\in[0.243,0.381]$, $x\in[0.693,0.860]$ ✓ |
+| tip of the large component | $x\approx0.35$–$0.4$ | $x\approx0.35$ ✓ |
+| range of the velocity field | $[-50,40]$ | equivalent ✓ |
+
+All six snapshots match Fig. 4 visually (the two contact zones at $t=0.04$ with the right
+hump at 1.75, the $[0.1,0.6]$ contact at $t=0.08$, and so on).
+
+### The only discrepancy: Example 1's contact vanishing time (0.26 vs 0.30)
+
+- **Converged** with respect to the grid and $\varepsilon$ (still 0.300 at
+  $\Delta x=10^{-4}$). Not a numerical error.
+- Depends **non-monotonically** on both $h$ and $\alpha$ ($h$: table above; $\alpha$:
+  0.005→0.177, 0.01→0.299, 0.02→0.300, 0.05→0.184). The paper states $h=1$ and
+  $\alpha=0.01$ explicitly, so a parameter mismatch cannot explain it.
+- The paper's own Fig. 2(f) ($t=0.3$) shows $\eta$ apparently stuck at 0 on
+  $x\in[0.42,0.58]$, which is **inconsistent within the paper itself** with Fig. 3's
+  "vanishes at $t\approx0.26$". At print resolution $\eta\in(0,0.01)$ cannot be
+  distinguished from $\eta=0$, so the difference plausibly lies in the treatment of the
+  extremely shallow region just before detachment (in our run $\min\eta=-2.3\times10^{-3}$
+  at $t=0.27$).
+- Most likely caused by unstated implementation details (initial step, treatment near the
+  boundary, ...); **we did not tune parameters to match**.
+
+---
+
+## 4. Convergence tests (which the paper says it performed)
+
+`results/convergence/convergence.txt`. This is a **self-convergence** check in the paper's
+own setting: the grid sweep refines $\Delta x=\Delta t$ **jointly**, and the $\varepsilon$
+sweep runs at a fixed grid (the finest member of each sweep is the reference). It does not
+separate the time, space and penalization errors — that would need independent
+$\Delta x$/$\Delta t$ sweeps and an $\varepsilon$ refinement with
+$\Delta t/\varepsilon\to0$, which the explicit-penalty constraint $\Delta t<\varepsilon$
+couples together (§1.2).
+
+Example 1, $\varepsilon=5\times10^{-4}$ fixed:
+
+| $\Delta x=\Delta t$ | $\Delta t/\varepsilon$ | contact area | $\|\eta(T)-\eta_{\mathrm{ref}}\|_\infty$ | note |
 |---|---|---|---|---|
-| $10^{-3}$ | 2.00 | 0.00099 | 8.50 | **不安定** |
-| $5\times10^{-4}$ | 1.00 | 0.0494 | $5.5\times10^{-2}$ | **不安定** |
+| $10^{-3}$ | 2.00 | 0.00099 | 8.50 | **unstable** (amplifies) |
+| $5\times10^{-4}$ | 1.00 | 0.0494 | $5.5\times10^{-2}$ | **non-monotone** (bounces) |
 | $4\times10^{-4}$ | 0.80 | 0.0861 | $2.6\times10^{-2}$ | |
-| $2\times10^{-4}$ | 0.40 | 0.1542 | $2.5\times10^{-3}$ | **論文設定** |
-| $10^{-4}$ | 0.20 | 0.1561 | — | 参照解 |
+| $2\times10^{-4}$ | 0.40 | 0.1542 | $2.5\times10^{-3}$ | **paper setting** |
+| $10^{-4}$ | 0.20 | 0.1561 | — | reference |
 
-論文設定は参照解と $2.5\times10^{-3}$（接触面積で 1.2%）の差。
-$\varepsilon$ 掃引（$\Delta x=\Delta t=2\times10^{-4}$ 固定）でも $\|\eta(T)-\eta_{\mathrm{ref}}\|_\infty$ は
-$9.7\times10^{-2}\to9.3\times10^{-3}$ と単調減少。
+The paper's setting is $2.5\times10^{-3}$ away from the reference (1.2% in contact area).
+In the $\varepsilon$ sweep ($\Delta x=\Delta t=2\times10^{-4}$ fixed),
+$\|\eta(T)-\eta_{\mathrm{ref}}\|_\infty$ also decreases monotonically,
+$9.7\times10^{-2}\to9.3\times10^{-3}$.
 
-障害物に触れない解析解 $\eta=h+a\sin(\pi x)e^{\sigma t}\cos(\omega t)$
-（$\lambda^2+\alpha\pi^2\lambda+\pi^2=0$, $\lambda=-0.049348\pm3.141205i$）との比較で
-**1 次収束**（rate 1.20, 1.11, 1.06, 1.04）。plan.md の予測通り。
+Against the contact-free analytic solution $\eta=h+a\sin(\pi x)e^{\sigma t}\cos(\omega t)$
+($\lambda^2+\alpha\pi^2\lambda+\pi^2=0$, $\lambda=-0.049348\pm3.141205i$) the scheme shows
+**first-order convergence** (rates 1.20, 1.11, 1.06, 1.04), as predicted when planning.
 
 ---
 
-## 5. 外部レビュー（codex）で見つかり修正した問題
+## 5. Issues found and fixed by external review (codex)
 
-`codex exec` によるレビューで以下を検出・修正した。差分式とエネルギー恒等式そのものは
-独立検証で正しいことが確認された（差分式の残差 $5.1\times10^{-15}$、恒等式の残差 $4.6\times10^{-11}$）。
+### 5.1 First review
 
-| # | 内容 | 対処 |
+A `codex exec` review found the issues below, all fixed. The difference equation and the
+energy identity themselves were confirmed correct by independent verification (residual
+$5.1\times10^{-15}$ for the difference equation, $4.6\times10^{-11}$ for the identity).
+
+| # | issue | fix |
 |---|---|---|
-| 1 | `store_every` が総ステップ数を割り切らないと接触面積が過大（`store_every=1000` で 3 倍） | `time_weights()` を `result.t` から台形則で構成 |
-| 2 | 初期データが端点高さ 1 固定で、`h≠1` では $\sim(1-h)^2/\Delta x$ の偽エネルギーが入る | 初期データを $h+\text{shape}(x)$ に変更、不整合時は `solve()` が警告。**$h$ 感度の結論を訂正**（上記 §2 (a)）|
-| 3 | `contact_dissipation` は各ステップでは非負でないのに「散逸 ≥ 0」と表示していた | `contact_work` に改名、非負性の主張を撤回（時間積分は正）|
-| 4 | `ndimage.label` の 4 近傍接続では斜めに進む接触前線が分断され得る | 既定を 8 近傍（`connectivity=2`）に変更、`--connectivity` で選択可 |
-| 5 | 静止解で `relative_drift` が $5\times10^{279}$ になる（分母が厳密に 0） | エネルギースケールで正規化。`absolute_drift` を追加 |
-| 6 | `.npz` がパラメータ違いでも同名で上書き。`save()` が numpy の付ける `.npz` を返さない | ファイル名にパラメータを含め `--out` 配下に保存。`save()` は実際の書き込み先を返す |
-| 7 | `scaled_min_size` の `round()` は面積下限を保証しない | `ceil()` に変更 |
+| 1 | contact area overestimated when `store_every` does not divide the number of steps (3× at `store_every=1000`) | `time_weights()` built from `result.t` with the trapezoidal rule |
+| 2 | initial data hard-coded endpoint height 1; for `h≠1` this injects $\sim(1-h)^2/\Delta x$ of spurious energy | initial data changed to $h+\text{shape}(x)$; `solve()` warns on mismatch. **The $h$-sensitivity conclusion was corrected** (§2 (a) above) |
+| 3 | `contact_dissipation` was reported as "dissipation ≥ 0" although individual steps are not non-negative | renamed to `contact_work`, non-negativity claim withdrawn (the time integral is positive in every run of this repository, but carries no guarantee; §5.2 #3) |
+| 4 | 4-connectivity in `ndimage.label` can cut a diagonally advancing contact front | default changed to 8-connectivity (`connectivity=2`), selectable via `--connectivity` |
+| 5 | `relative_drift` reached $5\times10^{279}$ for a rest state (denominator exactly 0) | normalized by the energy scale; `absolute_drift` added |
+| 6 | `.npz` overwritten under the same name across different parameters; `save()` did not return numpy's actual `.npz` path | parameters encoded in the file name, saved under `--out`; `save()` returns the actual path |
+| 7 | `round()` in `scaled_min_size` does not guarantee the area lower bound | changed to `ceil()` |
 
-また roundtrip テストを `np.array_equal` による全フィールドの厳密比較にし、
-1・2・5 に対する回帰テストを追加した（テスト計 45 件）。
+The roundtrip test was also made an exact all-field comparison via `np.array_equal`, and
+regression tests were added for #1, #2 and #5.
 
-## 6. 残っている作業
+### 5.2 Second review (2026-08-29, whole repository)
 
-- Phase 5: 接触散逸が接触境界に集中すること（Thm 2.3）の数値的確認。
-- 図の論文との並列比較画像の自動生成（現状は目視比較）。
+No high-severity defect (the stencil and the tridiagonal assembly were judged to match §6
+of the paper). The 14 findings (8 medium / 6 low) were addressed as follows.
+
+| # | issue | fix |
+|---|---|---|
+| 1 | the default "contact set" $\{\eta<0\}$ was described as the set where the penalty acts, but the force also requires $v<0$ (about 85% of penetrating nodes carry zero force) | re-described as the penetration set (docstrings, §2 (e)) |
+| 2 | "$Q_{\mathrm{num}}$ is $O(\Delta t)$ and vanishes" is overstated (14–18% of the total loss at the paper's resolution); the GIF's dissipation curve showed only viscous + contact | claim qualified (§1.1); the GIF now shows the complete budget viscous + contact + numerical |
+| 3 | the time integral of the contact work was asserted positive although no sign is guaranteed | changed to "positive in every run here (an observation, not a theorem)" |
+| 4 | $\Delta t/\varepsilon\ge1$ was uniformly labeled UNSTABLE (conflating monotonicity with linear stability) | split into `is_penalty_monotone()` (< 1) and `is_penalty_linearly_stable()` (< 2); labels distinguish NON-MONOTONE / UNSTABLE |
+| 5 | the convergence script read as if it separated convergence in Δt, Δx and ε | described explicitly as self-convergence ($\Delta x=\Delta t$ refined jointly + ε sweep at fixed grid) (§4) |
+| 6 | the verbatim Ex. 2 profile being negative on $(0.5,0.8)$ (minimum −1, 30% initially penetrating) was undocumented | added to §2 (b), README and docstrings; pinned by tests |
+| 7 | the `.npz` name did not include `store_every`, allowing silent overwrites | `_se{store_every}` appended to the file name (with a regression test) |
+| 8 | the (A2) test only looked at a spatially summed scalar | replaced by a test that independently reconstructs $P^i$ and $Q_{\mathrm{con}}$ from the snapshots and checks the recorded budget against them |
+| 9 | the second assert of the connectivity test was tautological | strict check with a synthetic diagonal band (1 component vs $n$ cells); CLI smoke tests and a stencil-residual test also added |
+| 10 | README overstated the contact set as "identical" | changed to visual-match language; the comparison being by eye and Ex. 2 running on inferred data are stated |
+| 11 | leftover "Phase" terminology from the deleted plan and a stale test count of 45 | descriptions updated |
+| 12 | "in both examples the whole string falls almost uniformly" and "$v^0$ is −50 at the endpoints" do not hold for Ex. 2 | Ex. 1 (uniform fall, 1 component) and Ex. 2 (right 40% falls 100× slower, 2 components) distinguished; endpoints described as "nonzero" |
+| 13 | no URLs in the package metadata (broken relative README links in the built package were also noted) | `[project.urls]` added; a license declaration needs a choice and is left open |
+| 14 | the threshold-mode tolerance could not be changed from the CLI | `--contact-tol` added and propagated to summary, figures and GIF |
+
+## 6. Example 3 (ours) — a rolling contact front
+
+In the paper's two examples the fast-falling part of the string touches down almost at
+once, so the contact set is a "shrinking triangle" in both (Ex. 1: the whole string falls
+uniformly, 1 component; Ex. 2: the right 40% falls 100× slower, 2 components). With the
+validated solver we built one example where **contact happens in a different pattern**
+(`results/ex3/`):
+
+$$
+\eta^0(x)=h+\tfrac32\sin(\pi x),\qquad
+v^0(x)=-110\,\sin(\pi x)\cdot\tfrac12\Big(1-\tanh\tfrac{x-0.35}{0.1}\Big),\qquad T=0.7,
+$$
+
+with the paper's discretization parameters ($\Delta x=\Delta t=1/5000$, $\alpha=0.01$,
+$\varepsilon=5\times10^{-4}$, $h=1$).
+
+### 6.1 Design intent
+
+- **Concentrate the downward velocity on the left half**: approximately $-110\sin(\pi x)$
+  for $x\le0.35$, essentially at rest ($|v^0|<0.1$) for $x\ge0.7$. The left side touches
+  down first and sticks inelastically; the disturbance released by the impact travels right
+  and lays the string down progressively.
+- **The initial data is fully compatible with (1.3)**: $\eta^0(0)=\eta^0(l)=h$ and also
+  $v^0(0)=v^0(l)=0$. The paper's two examples have $v^0$ nonzero at the endpoints
+  ($-50$ at both ends in Ex. 1; $-50$ on the left and $-0.5$ on the right in Ex. 2), so an
+  initial layer forms there when `solve()` clamps the endpoints to 0. Example 3 has none
+  (the $\sin(\pi x)$ factor takes care of it).
+- $|v^0|_{\max}=68.8$ (at $x\approx0.26$), still within the monotone-decay condition
+  $\Delta t/\varepsilon=0.4$.
+
+### 6.2 Results
+
+| item | value |
+|---|---|
+| first contact | $t=0.0304$ |
+| end of contact | $t=0.5754$ |
+| connected components | **1**, $x\in[0.063,0.878]$, a band crossing the $(t,x)$ plane diagonally |
+| front speed (linear fit on $t\in[0.1,0.5]$) | left edge 1.46, right edge 1.24 |
+| contact width | $t=0.1$: 0.32, $t=0.3$: 0.18, $t=0.5$: 0.22 |
+| contact area | 0.1238 |
+| penetration depth | $2.79\times10^{-2}=55.8\,\varepsilon$ ($\approx|v^0|_{\max}\varepsilon$, as predicted in §1.3) |
+| energy | $E(0)=504.3\to E(T)=7.86$ (viscous 155.7 / contact 273.3 / numerical 67.4), drift $8.0\times10^{-10}$ |
+| wall time | 0.66 s |
+
+The front speed slightly exceeding the characteristic speed 1 of the wave part (1.24–1.46)
+is due to the viscous term $\alpha\partial_{txx}\eta$ being parabolic, which puts no bound
+on the propagation speed of high-frequency components. In the velocity field
+(`velocity.png`) it shows up as a straight front separating falling ($\approx-50$) from
+in-contact ($\approx0$).
+
+The contact set is a single connected component with smooth boundary, showing that the
+observation of Remark 2.2 — "the contact set is quite regular" — also holds for a contact
+pattern different from the paper's two examples.
+
+## 7. Animation
+
+`src/contact_damped_wave/animation.py` (`cdw animate`). The GIF is written with
+matplotlib's `PillowWriter`, so no external encoder (ffmpeg etc.) is needed. Three panels:
+
+1. The string $\eta(t,\cdot)$ above the obstacle; the part in contact ($\{\eta<0\}$)
+   highlighted with a thick black line, the initial shape shown dashed.
+2. The contact set in the $(t,x)$ plane, revealed up to the current time. The future is
+   covered by a white rectangle (re-uploading the $(n_{\text{stored}},N+1)$ image every
+   frame would be heavy, so only the rectangle moves).
+3. Energy $E(t)$ and the cumulative dissipation (viscous + contact + numerical: as per
+   §1.1 the numerical dissipation is 14–18% of the loss, so the complete budget is shown —
+   the two curves are exact mirror images). The energy visibly drops at the moments of
+   contact.
+
+Outputs: `results/ex1/animation.gif` (1.5 MB), `results/ex2/animation.gif` (1.4 MB),
+`results/ex3/animation.gif` (2.1 MB, 180 frames, 765×544). The frames are subsampled from
+the stored snapshots of a `Result`, so a run made with a large `--store-every` animates
+just as well.
+
+## 8. Remaining work
+
+- Numerical check that the contact dissipation concentrates at the contact boundary
+  (Thm 2.3).
+- Automated side-by-side comparison images against the paper's figures (currently compared
+  by eye).
+- Convergence tests separating the time, space and penalization errors (independent
+  $\Delta x$/$\Delta t$ sweeps and an $\varepsilon$ refinement with
+  $\Delta t/\varepsilon\to0$; see the note in §4).
+- A license declaration for the package (awaiting a choice).

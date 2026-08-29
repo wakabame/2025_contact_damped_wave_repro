@@ -2,7 +2,7 @@ Example 1 (initial=figure, contact_mode=negative)
 parameters      : l=1 T=0.3 dx=0.0002 dt=0.0002 alpha=0.01 eps=0.0005 h=1 N=5000 M=1500 dt/eps=0.4
 initial step    : backward, store_every=1
 energy          : E(0)=1311.43 -> E(T)=10.8493
-  dissipated    : viscous=207.937, contact=855.939, numerical=236.709
+  energy lost   : viscous=207.937, contact work=855.939, numerical=236.709
   balance drift : 1.304e-10 (relative)
 energy monotone : True
   min rates     : viscous=0 (>= 0), numerical=0 (>= 0), contact work=-1.335e-07 (may dip < 0 by O(dt), see solver docstring)
@@ -11,4 +11,4 @@ penetration     : 2.5573e-02 (51.15 x eps)
 contact area    : 0.154244
 components      : 1 (min_size=5)
   #1 t in [0.0236, 0.2990], x in [0.0322, 0.9678], area=0.15424
-wall time: 0.30 s
+wall time: 0.29 s

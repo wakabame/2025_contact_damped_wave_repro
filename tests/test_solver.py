@@ -67,6 +67,44 @@ def test_rest_state_is_preserved() -> None:
     assert result.energy.max() < 1e-20
 
 
+def test_scheme_satisfies_the_printed_difference_equation() -> None:
+    """One-step residual of the paper's stencil, rebuilt from the snapshots.
+
+    On the interior nodes the scheme must satisfy, exactly,
+
+        (eta^{i+1} - 2 eta^i + eta^{i-1}) / dt^2
+            = alpha (D eta^{i+1} - D eta^i) / dt + D eta^{i+1} + P^i,
+
+    with ``D`` the second central difference and ``P^i`` the explicit penalty
+    built from level ``i``.  The run is chosen so that contact actually occurs,
+    which exercises the penalty branch of the equation as well.
+    """
+    params = Params(length=1.0, T=0.05, dx=1 / 200, dt=1 / 200, alpha=ALPHA, eps=1.25e-2, h=H)
+    x = np.linspace(0.0, 1.0, params.N + 1)
+    eta0 = H + 0.5 * np.sin(np.pi * x) ** 2
+    result = solve(params, eta0, np.full_like(x, -50.0))
+    assert result.contact_fraction.max() > 0.0  # the penalty branch is exercised
+
+    def second_difference(u: np.ndarray) -> np.ndarray:
+        return (u[2:] - 2.0 * u[1:-1] + u[:-2]) / params.dx**2
+
+    eta, dt = result.eta, params.dt
+    ghost = eta[0] - dt * result.v[0]  # eta^{-1} of the backward initial step
+    levels = np.concatenate(([ghost], eta))
+    worst = 0.0
+    for i in range(1, levels.shape[0] - 1):
+        previous, current, new = levels[i - 1], levels[i], levels[i + 1]
+        penalty = np.where(current < 0.0, np.maximum(0.0, -(current - previous) / dt), 0.0)
+        lhs = (new - 2.0 * current + previous)[1:-1] / dt**2
+        rhs = (
+            params.alpha * (second_difference(new) - second_difference(current)) / dt
+            + second_difference(new)
+            + penalty[1:-1] / params.eps
+        )
+        worst = max(worst, float(np.abs(lhs - rhs).max() / np.abs(rhs).max()))
+    assert worst < 1e-11
+
+
 def test_boundary_values_are_clamped() -> None:
     params = Params(length=1.0, T=0.1, dx=1 / 200, dt=1 / 200, alpha=ALPHA, eps=5e-3, h=2.5)
     x = np.linspace(0.0, 1.0, params.N + 1)

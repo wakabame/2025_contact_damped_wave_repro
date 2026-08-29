@@ -10,8 +10,13 @@ requires-python = ">=3.12"
 dependencies = [
     "matplotlib>=3.11.1",
     "numpy>=2.5.2",
+    "pillow>=12.3.0",
     "scipy>=1.18.1",
 ]
+
+[project.urls]
+Repository = "https://github.com/wakabame/2025_contact_damped_wave_repro"
+Paper = "https://arxiv.org/abs/2412.06185"
 
 [project.scripts]
 cdw = "contact_damped_wave.cli:main"

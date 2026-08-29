@@ -1,126 +1,206 @@
 # contact-damped-wave
 
-arXiv:2412.06185 — B. Muha, S. Trifunović,
-*Analysis of an Inelastic Contact Problem for the Damped Wave Equation* (v2, 2025-05-15)
-の数値実験（Section 6, Example 1 / 2, Figures 2–5）を **Python + uv** で再現するプロジェクトです。
+Reproduction of the numerical experiments (Section 6, Examples 1 and 2, Figures 2–5) of
 
-対象は、剛体障害物 $y=0$ の上で振動する 1 次元粘弾性弦の非弾性接触問題
+> B. Muha, S. Trifunović, *Analysis of an Inelastic Contact Problem for the Damped
+> Wave Equation*, arXiv:2412.06185 (v2, 2025-05-15)
+
+in **Python + uv**, plus an original example (Example 3) and GIF animations built on
+the validated solver.
+
+The problem is the inelastic contact of a one-dimensional viscoelastic string
+vibrating above a rigid obstacle at $y=0$:
 
 $$
 \partial_{tt}\eta-\alpha\,\partial_{txx}\eta-\partial_{xx}\eta
-=\frac1\varepsilon\,\chi_{\{\eta<0\}}(\partial_t\eta)^-,\qquad \eta(t,0)=\eta(t,l)=h,
+=\frac1\varepsilon\,\chi_{\{\eta<0\}}(\partial_t\eta)^-,\qquad \eta(t,0)=\eta(t,l)=h.
 $$
 
-を論文と同じ差分スキーム（空間 2 階中心差分・粘性/弾性項は陰的・ペナルティ項は陽的）で解き、
-解のスナップショット、$(t,x)$ 平面上の接触集合、速度場を描画します。
+We solve it with the same finite-difference scheme as the paper (second-order central
+differences in space, implicit viscous/elastic terms, explicit penalty term), plot
+solution snapshots, the contact set in the $(t,x)$ plane, and the velocity field, and
+render GIF animations.
 
-計画の詳細・論文の転記・記述の不整合と採用方針は [`plan.md`](plan.md) を参照してください。
+Implementation notes, the discrepancies found in the paper's description, and the full
+reproduction record live in [docs/notes.md](docs/notes.md).
 
-## 現在の状態
+## Status
 
-- [x] Phase 0: 環境構築（uv, 依存関係, plan.md, README）
-- [x] Phase 1: ソルバー実装（`params` / `initial_data` / `solver` / `diagnostics` / `plotting` / `cli`）
-- [x] Phase 2: 検証テスト（45 件。解析解との 1 次収束、エネルギー恒等式、対称性、収束テスト）
-- [x] Phase 3: Example 1 再現（Fig. 2, 3）
-- [x] Phase 4: Example 2 再現（Fig. 4, 5）
-- [x] 外部レビュー（codex）の指摘 7 件を修正（[docs/notes.md](docs/notes.md) §5）
-- [ ] Phase 5–6: 追加解析（接触散逸の局在）・図の並列比較
+- [x] Solver (`params` / `initial_data` / `solver` / `diagnostics` / `plotting` / `animation` / `cli`)
+- [x] Validation tests (55 tests: first-order convergence against an analytic solution,
+      an independent residual check of the printed stencil, exact discrete energy
+      identity, symmetry, grid/penalty convergence, CLI smoke tests)
+- [x] Example 1 reproduction (Fig. 2, 3)
+- [x] Example 2 reproduction (Fig. 4, 5)
+- [x] Two rounds of external review (codex) addressed ([docs/notes.md](docs/notes.md) §5)
+- [x] Original **Example 3** and GIF animations ([docs/notes.md](docs/notes.md) §6–7)
+- [ ] Remaining: numerical check that contact dissipation localizes at the contact
+      boundary (Thm 2.3); automated side-by-side comparison images against the paper's figures
 
-### 再現結果の要約
+### Reproduction summary
 
-| | 論文 | 本再現 |
+| | Paper | This reproduction |
 |---|---|---|
-| **Ex.1** 初回接触 | ≈0.02 | 0.0236 |
-| **Ex.1** 接触集合 | $x=0.5$ 対称の三角形、左縁に 10 個の波打ち | 同一（対称性は $1.7\times10^{-12}$）|
-| **Ex.1** 接触消滅 | ≈0.26 | 0.299 — **唯一の差異**（[docs/notes.md](docs/notes.md) §3）|
-| **Ex.2** 連結成分数 | 2 | 2 ✓ |
-| **Ex.2** 大成分 | $t\in[\sim0.02,\sim0.26]$, $x\in[\sim0.1,\sim0.6]$ | $t\in[0.026,0.261]$, $x\in[0.032,0.594]$ ✓ |
-| **Ex.2** 小成分 | $t\in[\sim0.25,\sim0.37]$, $x\in[\sim0.65,\sim0.85]$ | $t\in[0.243,0.381]$, $x\in[0.693,0.860]$ ✓ |
+| **Ex. 1** first contact | ≈0.02 | 0.0236 |
+| **Ex. 1** contact set | triangle symmetric about $x=0.5$, 10 ripples on the left edge | same shape and ripple count, matched visually (symmetry to $1.7\times10^{-12}$) |
+| **Ex. 1** contact vanishing | ≈0.26 | 0.299 — **the only discrepancy** ([docs/notes.md](docs/notes.md) §3) |
+| **Ex. 2** connected components | 2 | 2 ✓ |
+| **Ex. 2** large component | $t\in[\sim0.02,\sim0.26]$, $x\in[\sim0.1,\sim0.6]$ | $t\in[0.026,0.261]$, $x\in[0.032,0.594]$ ✓ |
+| **Ex. 2** small component | $t\in[\sim0.25,\sim0.37]$, $x\in[\sim0.65,\sim0.85]$ | $t\in[0.243,0.381]$, $x\in[0.693,0.860]$ ✓ |
 
-スナップショット（Fig. 2 / Fig. 4）は両例とも 6 枚すべて目視一致。
-離散エネルギー収支は機械精度で閉じる（drift $\sim10^{-10}$）。計算時間は論文設定で 0.3–0.5 秒。
+All six snapshots match Fig. 2 / Fig. 4 in both examples — by eye against the published
+figures; automated side-by-side comparison images are still on the to-do list, and
+Example 2 runs on initial data *inferred from* Fig. 4(a) rather than the printed formula
+(see problem 1 below). The discrete energy balance closes to machine precision
+(drift $\sim10^{-10}$). Runtime is 0.3–0.5 s per example at the paper's resolution.
 
-**論文記述の重要な問題を 2 点確認**（詳細は [docs/notes.md](docs/notes.md)）:
+**Two significant problems with the paper's description were confirmed**
+(details in [docs/notes.md](docs/notes.md)):
 
-1. Example 2 の初期データの式は原文のままだと不連続（$x=0.8$ で 1.202 のジャンプ）で
-   $\eta^0(0)=0$ となり Theorem 2.1 の仮定に反し、$E(0)$ が 9 倍になって Fig. 4 を再現しない。
-   図に整合する式を既定とした（`--initial paper-literal` で原文式も実行可）。
-2. 論文に記載のない**陽的ペナルティの安定条件 $\Delta t/\varepsilon<1$** が存在する。
-   論文設定は $0.4$ で安全側だが、$\ge2$ ではエネルギーが増加して破綻する。
+1. Example 2's initial data, as printed, is discontinuous (a jump of 1.202 at $x=0.8$),
+   **negative on $(0.5,0.8)$** — the sine branch dips to $-1$ at $x=0.65$, so 30% of the
+   string would start below the obstacle — and has $\eta^0(0)=0$, violating the
+   assumption of Theorem 2.1; $E(0)$ comes out 9 times too large and Fig. 4 cannot be
+   reproduced from it. We default to a formula consistent with the figure (the literal
+   formula is available via `--initial paper-literal`).
+2. The explicit penalty term has an undocumented **monotonicity condition
+   $\Delta t/\varepsilon<1$**: for $1\le\Delta t/\varepsilon<2$ the penalized velocity
+   bounces instead of decaying monotonically and the contact set degrades badly, and for
+   $\Delta t/\varepsilon\ge2$ the update grows and the run blows up. The paper's setting,
+   $0.4$, is safely monotone.
 
-## セットアップ
+## Example 3 (original): a rolling contact front
 
-[uv](https://docs.astral.sh/uv/) が必要です。Python 3.12 は uv が自動で用意します。
+![Example 3 animation](results/ex3/animation.gif)
+
+In the paper's examples the fast-falling part of the string slaps down essentially at
+once and the contact set consists of shrinking triangles — one in Example 1, where the
+whole string falls uniformly, two in Example 2, where the right 40% falls a hundred
+times slower. Using the validated solver we designed one example where contact happens
+differently ([docs/notes.md](docs/notes.md) §6):
+
+$$
+\eta^0(x)=1+\tfrac32\sin(\pi x),\qquad
+v^0(x)=-110\,\sin(\pi x)\cdot\tfrac12\Big(1-\tanh\tfrac{x-0.35}{0.1}\Big),\qquad T=0.7,
+$$
+
+with the paper's discretization parameters. Only the **left half** of the arched
+string is given downward velocity, so the left side touches down first and sticks,
+and the disturbance propagates rightward, laying the string down progressively. The
+contact set becomes a **band crossing the $(t,x)$ plane diagonally**, with the front
+moving right at speed 1.24–1.46.
+
+The initial data is fully compatible with the clamped ends
+($\eta^0(0)=\eta^0(1)=h$ and $v^0(0)=v^0(1)=0$), unlike the paper's two examples,
+whose initial velocities are nonzero at the endpoints ($-50$ at both ends in
+Example 1; $-50$ / $-0.5$ in Example 2) and create an initial layer there.
+
+```bash
+uv run cdw run     --example 3 --min-component-size 20   # results/ex3/*.png
+uv run cdw animate --example 3 --frames 180 --fps 18 --dpi 85 --store-every 5
+```
+
+The paper's two examples can be animated the same way
+(`results/ex{1,2}/animation.gif`). The GIF has three panels — the string (contact
+portion highlighted in black), the contact set revealed up to the current time, and
+the energy balance — and is written with Pillow only, no ffmpeg required.
+
+## Setup
+
+Requires [uv](https://docs.astral.sh/uv/); it provisions Python 3.12 automatically.
 
 ```bash
 git clone <this-repo> && cd 2025_contact_damped_wave_repro
-uv sync            # .venv を作成し、numpy / scipy / matplotlib と dev ツールを導入
+uv sync            # creates .venv with numpy / scipy / matplotlib and dev tools
 uv run python -c "import contact_damped_wave, numpy, scipy, matplotlib; print('ok')"
 ```
 
-論文 PDF は git 管理外です。参照する場合は次で取得してください。
+The paper's PDF is not tracked in git. To fetch it:
 
 ```bash
 mkdir -p paper && curl -L -o paper/2412.06185v2.pdf https://arxiv.org/pdf/2412.06185v2
 ```
 
-## 使い方
+## Usage
 
 ```bash
-uv run python scripts/run_examples.py            # 両例＋原文式版をまとめて実行
-uv run cdw run --example 1                       # Fig. 2, 3 相当を results/ex1 に生成
-uv run cdw run --example 2                       # Fig. 4, 5 相当を results/ex2 に生成
+uv run python scripts/run_examples.py            # all 3 examples + literal-formula variant (~2 s)
+uv run python scripts/run_examples.py --animate  # also render GIFs (~5 min)
+uv run cdw run --example 1                       # Fig. 2, 3 equivalents in results/ex1
+uv run cdw run --example 2                       # Fig. 4, 5 equivalents in results/ex2
+uv run cdw run --example 3                       # original example in results/ex3
 uv run cdw run --example 2 --initial paper-literal --out results/ex2_paper_literal
-uv run python scripts/convergence_study.py       # Δt, Δx, ε の収束テスト
-uv run pytest                                     # 検証テスト（45 件、1 秒未満）
+uv run cdw animate --example 3                   # results/ex3/animation.gif
+uv run python scripts/convergence_study.py       # self-convergence: Δx = Δt jointly, ε sweep
+uv run pytest                                     # validation tests (55 tests, ~5 s)
 uv run ruff check . && uv run ruff format .
 ```
 
-主なオプション（`uv run cdw run --help`）:
+There are two subcommands, `run` (figures and diagnostics) and `animate` (GIF); the
+problem-selection and parameter-override options are shared.
 
-| オプション | 既定 | 意味 |
+Main options (`uv run cdw run --help` / `uv run cdw animate --help`):
+
+| Option | Default | Meaning |
 |---|---|---|
-| `--dx --dt --eps --alpha --final-time --h` | 論文値 | パラメータの上書き |
-| `--initial {figure,paper-literal}` | `figure` | Ex.2 の初期データ（plan.md 項目 (b)）|
-| `--initial-step {backward,forward}` | `backward` | 三段階漸化式の開始法（項目 (d)）|
-| `--contact-mode {negative,threshold}` | `negative` | 接触集合の判定（項目 (e)）|
-| `--connectivity {1,2}` | 2 | 連結成分の近傍（2 = 8 近傍）|
-| `--store-every` | 1 | スナップショットの間引き |
+| `--example {1,2,3}` | required | 1 and 2 are the paper's examples, 3 is ours |
+| `--dx --dt --eps --alpha --final-time --h` | paper values | parameter overrides |
+| `--initial {figure,paper-literal}` | `figure` | Example 2 initial data ([docs/notes.md](docs/notes.md) §2 (b)) |
+| `--initial-step {backward,forward}` | `backward` | how to start the three-level recursion (§2 (d)) |
+| `--contact-mode {negative,threshold}` | `negative` | contact-set criterion (§2 (e)) |
+| `--contact-tol` | $10^{-12}$ | tolerance used by `--contact-mode threshold` |
+| `--connectivity {1,2}` | 2 | connected-component neighborhood (2 = 8-connected) |
+| `--store-every` | run: 1 / animate: 5 | snapshot thinning |
+| `--frames --fps --dpi` | 200 / 20 / 90 | `animate` only; `--dpi` controls file size |
 
-生成物: `fig{2,4}_snapshots.png`, `fig{3,5}_contact_set.png`, `fig{3,5}_velocity.png`,
-`energy.png`, `summary.txt`、およびパラメータを名前に含む `.npz`（すべて `--out` 配下）。
+Outputs (all under `--out`, default `results/exN`): `run` writes the figures
+(`fig{2,4}_snapshots.png` etc.; plain `snapshots.png` etc. for Example 3),
+`energy.png`, `summary.txt`, and an `.npz` whose name encodes the parameters;
+`animate` writes `animation.gif`.
 
-## 論文の設定（共通）
+## Paper settings (shared)
 
-| パラメータ | 値 |
-|-----------|----|
+| Parameter | Value |
+|-----------|-------|
 | $l$ | 1 |
 | $\Delta t=\Delta x$ | $1/5000$ |
-| $\alpha$（粘弾性係数） | 0.01 |
-| $\varepsilon$（ペナルティ） | 0.0005 |
-| $h$（端点の高さ） | 1（図より） |
+| $\alpha$ (viscoelasticity) | 0.01 |
+| $\varepsilon$ (penalty) | 0.0005 |
+| $h$ (endpoint height) | 1 (from the figures) |
 | Example 1 | $T=0.3$, $\eta^0=1+\tfrac12\sin^2(10\pi x)$, $v^0=-50$ |
-| Example 2 | $T=0.5$, 区分的初期データ（`plan.md` §3 参照）, $v^0=-50$ ($x<0.6$), $-0.5$ ($x\ge0.6$) |
+| Example 2 | $T=0.5$, piecewise initial data (below), $v^0=-50$ ($x<0.6$), $-0.5$ ($x\ge0.6$) |
+| Example 3 (ours) | $T=0.7$, $\eta^0=1+\tfrac32\sin(\pi x)$, $v^0=-110\sin(\pi x)\cdot\tfrac12(1-\tanh\frac{x-0.35}{0.1})$ |
 
-## ディレクトリ
+Example 2's default initial displacement (read off Fig. 4(a); the paper's printed
+formula is inconsistent, see [docs/notes.md](docs/notes.md) §2 (b)):
+
+$$
+\eta^0(x)=\begin{cases}
+1+5x, & 0\le x<0.2,\\
+2+\sin\!\big(\pi(x-0.2)/0.3\big), & 0.2\le x<0.8,\\
+6-5x, & 0.8\le x\le1.
+\end{cases}
+$$
+
+## Layout
 
 ```
-plan.md                     再現計画（論文の転記・不整合・フェーズ）
-docs/notes.md               再現ノート（スキームの整理・不整合の裏付け・結果と差異）
+docs/notes.md               reproduction notes (scheme, discrepancies, results, Example 3)
 src/contact_damped_wave/
-  params.py                 Params データクラスと論文設定 EXAMPLE1 / EXAMPLE2
-  initial_data.py           両例の初期データ（Ex.2 は figure / paper-literal の 2 種）
-  solver.py                 三重対角陰解法ソルバーと厳密な離散エネルギー収支
-  diagnostics.py            接触集合・連結成分・貫入深さ・エネルギー収支
-  plotting.py               Fig. 2–5 相当の描画
-  cli.py                    `cdw run` コマンド
-tests/                      検証テスト 38 件
+  params.py                 Params dataclass and the EXAMPLE1 / EXAMPLE2 / EXAMPLE3 settings
+  initial_data.py           initial data for the 3 examples (Ex. 2: figure / paper-literal)
+  solver.py                 tridiagonal implicit solver with exact discrete energy balance
+  diagnostics.py            contact set, connected components, penetration depth, energy balance
+  plotting.py               Fig. 2–5 equivalents
+  animation.py              GIF animations (Pillow only)
+  cli.py                    the `cdw run` / `cdw animate` commands
+tests/                      55 validation tests
 scripts/                    run_examples.py / convergence_study.py
-results/                    生成した図・要約（data/ は git 管理外）
-paper/                      論文 PDF とページ画像（git 管理外）
+results/                    generated figures and summaries (data/ untracked)
+paper/                      paper PDF and page images (untracked)
 ```
 
-## 参考文献
+## Reference
 
 - B. Muha, S. Trifunović, *Analysis of an Inelastic Contact Problem for the Damped Wave Equation*,
   arXiv:2412.06185, <https://arxiv.org/abs/2412.06185>

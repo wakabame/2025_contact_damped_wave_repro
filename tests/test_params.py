@@ -23,10 +23,16 @@ def test_implicit_coefficient_matches_hand_computation() -> None:
     assert EXAMPLE1.implicit_coefficient / EXAMPLE1.dx**2 == pytest.approx(51.0)
 
 
-def test_penalty_ratio_and_stability() -> None:
+def test_penalty_ratio_monotonicity_and_stability() -> None:
+    """Monotone decay (ratio < 1) and linear stability (ratio < 2) are distinct."""
     assert EXAMPLE1.penalty_ratio == pytest.approx(0.4)
-    assert EXAMPLE1.is_penalty_stable()
-    assert not EXAMPLE1.replace(eps=EXAMPLE1.dt).is_penalty_stable()
+    assert EXAMPLE1.is_penalty_monotone()
+    assert EXAMPLE1.is_penalty_linearly_stable()
+    at_one = EXAMPLE1.replace(eps=EXAMPLE1.dt)
+    assert not at_one.is_penalty_monotone()
+    assert at_one.is_penalty_linearly_stable()  # bounces, but does not grow
+    at_two = EXAMPLE1.replace(eps=EXAMPLE1.dt / 2)
+    assert not at_two.is_penalty_linearly_stable()
 
 
 @pytest.mark.parametrize(

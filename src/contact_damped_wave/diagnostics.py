@@ -38,10 +38,13 @@ ContactMode = Literal["negative", "threshold"]
 def contact_mask(result: Result, mode: ContactMode = "negative", tol: float = 1e-12) -> np.ndarray:
     """Boolean contact set on the stored snapshots, shape ``(n_stored, N + 1)``.
 
-    ``mode="negative"`` marks ``eta < 0``, i.e. exactly the set where the penalty
-    force acts in the scheme; ``mode="threshold"`` marks ``eta <= tol``, which is
-    closer to ``{eta = 0}`` in the limit problem.  The paper does not say which
-    one Figures 3 and 5 use (``plan.md`` item (e)), so both are provided.
+    ``mode="negative"`` marks ``eta < 0``: the *penetration* set.  This contains
+    the support of the penalty force but is not equal to it -- the force also
+    requires a downward velocity (``v < 0``), and a large fraction of penetrating
+    nodes sit at ``v >= 0`` where the force is zero.  ``mode="threshold"`` marks
+    ``eta <= tol``, which is closer to ``{eta = 0}`` in the limit problem.  The
+    paper does not say which criterion Figures 3 and 5 use (``docs/notes.md``
+    §2 (e)), so both are provided.
     """
     if mode == "negative":
         return result.eta < 0.0
@@ -179,11 +182,14 @@ class EnergyBalance:
 
     ``viscous_cumulative`` and ``contact_cumulative`` are the discrete versions of
     ``int_0^t alpha int |partial_tx eta|^2`` and ``int_0^t int D_con``;
-    ``numerical_cumulative`` is the ``O(dt)`` dissipation of the scheme itself.
-    With all three included the budget closes to machine precision, see the
-    module docstring of :mod:`contact_damped_wave.solver`.  The contact term is
-    the work of the penalty force: its integral is positive, but individual steps
-    can be slightly negative (again see that docstring).
+    ``numerical_cumulative`` is the dissipation of the scheme itself -- formally
+    ``O(dt)`` for smooth solutions, but 14--18% of the total loss at the paper's
+    resolution, so it is always part of the budget here.  With all three included
+    the budget closes to machine precision, see the module docstring of
+    :mod:`contact_damped_wave.solver`.  The contact term is the *work* of the
+    penalty force: individual steps can be slightly negative, and its integral,
+    while positive in every run in this repository, carries no sign guarantee
+    (again see that docstring).
     """
 
     t: np.ndarray
@@ -205,8 +211,20 @@ class EnergyBalance:
 
     @property
     def physical_cumulative(self) -> np.ndarray:
-        """Dissipation attributable to the PDE (viscous + contact)."""
+        """Dissipation attributable to the PDE (viscous + contact).
+
+        Excludes :attr:`numerical_cumulative`, so it does *not* close the budget
+        against :attr:`energy`; use :attr:`dissipated_cumulative` for that.
+        """
         return self.viscous_cumulative + self.contact_cumulative
+
+    @property
+    def dissipated_cumulative(self) -> np.ndarray:
+        """All recorded energy loss (viscous + contact + numerical).
+
+        ``energy + dissipated_cumulative`` is constant to machine precision.
+        """
+        return self.viscous_cumulative + self.contact_cumulative + self.numerical_cumulative
 
     @property
     def absolute_drift(self) -> float:
@@ -269,8 +287,8 @@ def summarize(
         f"parameters      : {result.params.summary()}",
         f"initial step    : {result.initial_step}, store_every={result.store_every}",
         f"energy          : E(0)={balance.energy[0]:.6g} -> E(T)={balance.energy[-1]:.6g}",
-        f"  dissipated    : viscous={balance.viscous_cumulative[-1]:.6g}, "
-        f"contact={balance.contact_cumulative[-1]:.6g}, "
+        f"  energy lost   : viscous={balance.viscous_cumulative[-1]:.6g}, "
+        f"contact work={balance.contact_cumulative[-1]:.6g}, "
         f"numerical={balance.numerical_cumulative[-1]:.6g}",
         f"  balance drift : {balance.relative_drift:.3e} (relative)",
         f"energy monotone : {bool(np.all(np.diff(result.energy) <= 1e-9 * abs(result.energy[0])))}",
